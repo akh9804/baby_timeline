@@ -95,6 +95,18 @@ pnpm storage:cleanup
 - 로그인은 IP당 15분에 10회, 전체 15분에 200회로 제한합니다. IP는 HMAC으로 저장합니다. Vercel 등 신뢰할 수 있는 프록시가 `x-forwarded-for`를 덮어쓰는 배포 구성이 필요하며, 자체 호스팅 시 해당 헤더를 정규화하세요.
 - 가족 비밀번호 변경 시 기존 쿠키까지 무효화하려면 `FAMILY_SESSION_SECRET`도 교체합니다.
 
+### 비밀번호 입력 후 503이 나오는 경우
+
+Vercel 함수 로그에 `Family access rate limiter RPC failed`가 보이면 Supabase SQL Editor에서 migration을 아직 실행하지 않은 상태입니다. `supabase/migrations/202609290001_initial.sql` 전체를 실행한 뒤 재시도하세요. 특히 아래 함수와 권한이 있어야 합니다.
+
+```sql
+select public.consume_access_attempt('vercel-check');
+```
+
+이 쿼리는 SQL Editor에서는 `service_role`이 아니어서 권한 오류가 날 수 있습니다. 실제 앱 요청으로 확인하려면 Vercel에서 재배포한 뒤 로그인 화면에서 다시 시도하세요. Vercel Runtime Logs에서 원인을 확인할 수 있습니다.
+
+로그에 `Family access is not configured`가 보이면 Vercel Production 환경변수에 `FAMILY_SESSION_SECRET`(32자 이상), `FAMILY_PASSWORD_HASH`(bcrypt `$2b$...` 해시)를 넣었는지 확인하고 재배포하세요. 해시 변수에는 6자리 원문 비밀번호가 아니라 `pnpm password:hash`가 출력한 해시만 입력해야 합니다.
+
 ## 검증
 
 ```sh

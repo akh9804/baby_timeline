@@ -21,7 +21,10 @@ export async function POST(request: Request) {
     const secret = process.env.FAMILY_SESSION_SECRET;
     const hash = process.env.FAMILY_PASSWORD_HASH;
     const secondHash = process.env.FAMILY_PASSWORD_HASH_2;
-    if (!secret || secret.length < 32 || !hash) return unavailable();
+    if (!secret || secret.length < 32 || !hash) {
+      console.error("Family access is not configured: FAMILY_SESSION_SECRET or FAMILY_PASSWORD_HASH is missing/invalid");
+      return unavailable();
+    }
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
     const fingerprint = createHmac("sha256", secret).update(ip).digest("hex");
@@ -29,7 +32,10 @@ export async function POST(request: Request) {
       "consume_access_attempt",
       { fingerprint },
     );
-    if (error) return unavailable();
+    if (error) {
+      console.error("Family access rate limiter RPC failed:", error.message);
+      return unavailable();
+    }
     if (!allowed)
       return json(
         { error: "시도가 너무 많아요. 15분 후 다시 시도해 주세요." },
