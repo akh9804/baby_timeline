@@ -5,7 +5,7 @@
 ## 구현 범위
 
 - 가족 공용 비밀번호: 최대 2개, 서버 bcrypt 검증, 30일 HS256 세션, HttpOnly / SameSite=Lax 쿠키, 프로덕션 Secure.
-- 편집자: 이메일 매직 링크 + `editors` allowlist. 가족 비밀번호 없이도 인가된 편집자는 열람 가능합니다.
+- 편집자: Supabase 이메일·비밀번호 로그인 + `editors` allowlist. 가족 비밀번호 없이도 인가된 편집자는 열람 가능합니다.
 - 타임라인: 실제 기록 일시 내림차순, 안정적인 cursor pagination, 임신 주수 / 출생일 D+0부터 표시. 가족 날짜 표시는 Asia/Seoul 기준입니다.
 - 원본 미디어: private bucket, 서버에서 media ID로만 10분 signed URL 발급. 화면에 가까운 미디어부터 조회하고 8분마다 URL을 갱신합니다. 원본 바이너리는 Next.js를 거치지 않습니다.
 - 기록 생성·수정, 사진·영상 업로드, EXIF 촬영일 후보 수정, 크기·해상도·영상 길이 추출, 개별 파일 및 기록 전체 삭제.
@@ -48,8 +48,8 @@ pnpm dev
 
 1. Supabase 프로젝트를 준비합니다.
 2. SQL Editor에서 `supabase/migrations/202609290001_initial.sql` 전체를 실행합니다. 또는 프로젝트에 연결한 Supabase CLI로 `supabase db push`를 실행합니다.
-3. Auth에서 Email provider와 매직 링크 사용을 활성화하고, 공개 회원가입은 비활성화합니다. 운영 환경에서는 SMTP도 설정합니다.
-4. Auth의 URL Configuration에서 Site URL을 서비스 주소로, Redirect URLs에 `http://127.0.0.1:3000/auth/callback`과 운영 주소의 `/auth/callback`을 등록합니다. 기본 매직 링크 템플릿의 `{{ .ConfirmationURL }}`을 사용합니다.
+3. Auth에서 Email provider와 이메일 비밀번호 로그인을 활성화하고, 공개 회원가입은 비활성화합니다.
+4. Auth Users에서 편집자 이메일과 비밀번호를 생성합니다. 기존 사용자는 Users 메뉴에서 비밀번호를 설정하거나 재설정합니다.
 5. Auth Users에서 엄마·아빠 계정을 관리자로 미리 생성합니다. 생성한 사용자의 UUID를 allowlist에 넣습니다. 클라이언트는 allowlist를 수정할 수 없습니다.
 
 ```sql
@@ -60,7 +60,7 @@ values ('AUTH_USER_UUID', '엄마');
 6. 편집자 로그인 → 기록 남기기에서 아이 이름, 출산 예정일 또는 생일을 입력합니다.
 7. Storage의 `family-media`가 **Private**인지 확인합니다. migration은 bucket 제한을 500MB로 설정하지만 프로젝트/플랜의 전역 파일 제한이 더 작으면 그 제한이 우선합니다. 필요한 용량과 요금은 Supabase 설정에서 확인하세요.
 
-매직 링크는 요청한 브라우저에서 열어야 PKCE 검증이 됩니다. 등록되지 않은 이메일은 새 계정을 만들지 않습니다. Auth 사용자여도 allowlist에 없다면 조회·업로드 권한이 없습니다.
+등록되지 않은 이메일은 로그인할 수 없습니다. Auth 사용자여도 `editors` allowlist에 없다면 조회·업로드 권한이 없습니다.
 
 ## API
 
@@ -122,7 +122,7 @@ Vitest로 세션 위조·만료, 날짜 경계·윤년, 파일 제한을 검증�
 
 - 게스트가 `/timeline`, `/upload`, timeline API, signed URL API에 접근할 수 없는지
 - 가족 인증 후 사진과 영상이 보이고, 가족 쿠키만으로 Supabase 쓰기가 거부되는지
-- 매직 링크 로그인 후 allowlist 사용자만 생성·수정·삭제 가능한지
+- 이메일·비밀번호 로그인 후 allowlist 사용자만 생성·수정·삭제 가능한지
 - Storage public object 주소 접근이 거부되고 signed URL이 10분 후 만료되는지
 - 기록 삭제 후 DB media와 실제 Storage 원본이 모두 삭제되는지
 - 업로드 실패·재시도 및 `pnpm storage:cleanup` 복구 동작

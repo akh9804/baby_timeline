@@ -1,35 +1,35 @@
 "use client";
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { browserClient } from "@/shared/supabase/browser";
-export function EditorLogin({ expired = false }: { expired?: boolean }) {
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState(
-    expired ? "로그인 링크가 만료되었어요. 새 링크를 요청해 주세요." : "",
-  );
+import { navigateFresh } from "@/shared/utils/navigation";
+export function EditorLogin() {
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
         setError("");
-        setMessage("");
         const email = String(new FormData(e.currentTarget).get("email"));
+        const password = String(new FormData(e.currentTarget).get("password"));
         try {
-          const { error } = await browserClient().auth.signInWithOtp({
+          const { error } = await browserClient().auth.signInWithPassword({
             email,
-            options: {
-              shouldCreateUser: false,
-              emailRedirectTo: `${window.location.origin}/auth/callback`,
-            },
+            password,
           });
           if (error) throw error;
-          setMessage(
-            "로그인 링크를 요청했어요. 등록된 이메일의 받은 편지함을 확인해 주세요.",
-          );
-        } catch {
+          navigateFresh("/timeline");
+        } catch (cause) {
+          const message =
+            cause instanceof Error ? cause.message.toLowerCase() : "";
           setError(
-            "로그인 링크를 보내지 못했어요. 등록된 이메일과 서비스 설정을 확인해 주세요.",
+            message.includes("invalid login credentials") ||
+              message.includes("invalid")
+              ? "이메일 또는 비밀번호가 맞지 않아요. 다시 확인해 주세요."
+              : "로그인하지 못했어요. 잠시 후 다시 시도해 주세요.",
           );
         } finally {
           setBusy(false);
@@ -45,18 +45,32 @@ export function EditorLogin({ expired = false }: { expired?: boolean }) {
         autoComplete="email"
         placeholder="hello@example.com"
       />
+      <label htmlFor="password">비밀번호</label>
+      <div className="password-input">
+        <input
+          id="password"
+          name="password"
+          type={showPassword ? "text" : "password"}
+          required
+          autoComplete="current-password"
+          placeholder="비밀번호를 입력해 주세요"
+        />
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+          onClick={() => setShowPassword((value) => !value)}
+        >
+          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
-      {message && (
-        <p role="status" className="success">
-          {message}
-        </p>
-      )}
       <button disabled={busy} className="button primary full">
-        {busy ? "보내는 중…" : "로그인 링크 받기"}
+        {busy ? "로그인 중…" : "편집자 로그인"}
       </button>
     </form>
   );
