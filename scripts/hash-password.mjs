@@ -23,8 +23,8 @@ process.stdin.on("keypress", async (text, key) => {
   if (key.name === "return") {
     process.stdin.setRawMode(false);
     process.stdin.pause();
-    if (Buffer.byteLength(password) < 8 || Buffer.byteLength(password) > 72) {
-      console.error("\n비밀번호는 8~72바이트로 입력해 주세요.");
+    if ([...password].length < 6 || Buffer.byteLength(password) > 72) {
+      console.error("\n비밀번호는 6자 이상, 최대 72바이트로 입력해 주세요.");
       process.exitCode = 1;
       return;
     }
