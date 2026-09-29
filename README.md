@@ -4,7 +4,7 @@
 
 ## 구현 범위
 
-- 가족 공용 비밀번호: 서버 bcrypt 검증, 30일 HS256 세션, HttpOnly / SameSite=Lax 쿠키, 프로덕션 Secure.
+- 가족 공용 비밀번호: 최대 2개, 서버 bcrypt 검증, 30일 HS256 세션, HttpOnly / SameSite=Lax 쿠키, 프로덕션 Secure.
 - 편집자: 이메일 매직 링크 + `editors` allowlist. 가족 비밀번호 없이도 인가된 편집자는 열람 가능합니다.
 - 타임라인: 실제 기록 일시 내림차순, 안정적인 cursor pagination, 임신 주수 / 출생일 D+0부터 표시. 가족 날짜 표시는 Asia/Seoul 기준입니다.
 - 원본 미디어: private bucket, 서버에서 media ID로만 10분 signed URL 발급. 화면에 가까운 미디어부터 조회하고 8분마다 URL을 갱신합니다. 원본 바이너리는 Next.js를 거치지 않습니다.
@@ -24,6 +24,16 @@ openssl rand -hex 32
 ```
 
 `.env.local`에 Supabase 프로젝트 URL, publishable key, secret key, 비밀번호 hash, 세션 secret을 입력합니다. 비밀번호 hash는 출력된 **작은따옴표까지 그대로 복사**해야 Next.js의 `$` 환경변수 확장을 막을 수 있습니다. 실제 키나 비밀번호는 Git에 넣지 않습니다.
+
+가족 비밀번호를 두 개 사용하려면 아래 명령으로 두 번째 비밀번호의 해시를 생성하세요.
+
+```sh
+pnpm password:hash --second
+```
+
+기존 `FAMILY_PASSWORD_HASH`는 필수이며 그대로 유지합니다. 추가로 `FAMILY_PASSWORD_HASH_2`를 설정하면 두 비밀번호 중 어느 것으로든 동일한 가족 열람 권한을 얻습니다. 두 번째 값이 없거나 비어 있으면 기존처럼 첫 번째 비밀번호만 사용합니다. Vercel에는 변수 이름을 Key에, `$2b$...` 해시만 Value에 입력합니다. 등호나 바깥따옴표는 넣지 않습니다. 환경변수 변경 후 재배포해야 적용됩니다.
+
+두 비밀번호는 같은 가족 세션을 발급합니다. 한쪽 비밀번호를 변경하거나 두 번째 값을 제거해도 이미 발급된 세션은 최대 30일 유지됩니다. 기존 로그인을 해제하려면 `FAMILY_SESSION_SECRET`을 교체해야 하며, 이때 모든 가족 세션이 무효화됩니다. 비밀번호별 세션 구분이나 개별 로그아웃은 지원하지 않습니다.
 
 ```sh
 pnpm dev

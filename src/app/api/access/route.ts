@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       return json({ error: "비밀번호를 확인해 주세요." }, 400);
     const secret = process.env.FAMILY_SESSION_SECRET;
     const hash = process.env.FAMILY_PASSWORD_HASH;
+    const secondHash = process.env.FAMILY_PASSWORD_HASH_2;
     if (!secret || secret.length < 32 || !hash) return unavailable();
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
@@ -34,7 +35,13 @@ export async function POST(request: Request) {
         { error: "시도가 너무 많아요. 15분 후 다시 시도해 주세요." },
         429,
       );
-    if (!(await compare(input.data.password, hash)))
+    // Check all configured hashes; both passwords grant the same family session.
+    const matches = await Promise.all(
+      [hash, secondHash]
+        .filter((value): value is string => !!value)
+        .map((value) => compare(input.data.password, value)),
+    );
+    if (!matches.some(Boolean))
       return json(
         { error: "비밀번호가 맞지 않아요. 다시 확인해 주세요." },
         401,
