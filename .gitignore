@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Test / Coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite
+.vite/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
