@@ -6,9 +6,9 @@
   "packageManager": "pnpm@12.8.1",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server/app.ts",
+    "dev": "tsx --watch src/server/server.ts",
     "build:server": "tsc -p tsconfig.server.json",
-    "start": "node dist/server/app.js",
+    "start": "node dist/server/server.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",
@@ -24,6 +24,7 @@
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.9",
     "prettier-plugin-organize-imports": "^4.3.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0"
   }

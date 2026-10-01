@@ -1,18 +1,12 @@
 import Fastify from 'fastify';
+import pingRoutes from './routes/ping.js';
 
-const fastify = Fastify({
-  logger: true,
-});
+export function buildApp() {
+  const app = Fastify({
+    logger: true,
+  });
 
-fastify.get('/', (request, reply) => {
-  reply.send({ hello: 'world' });
-});
+  app.register(pingRoutes);
 
-fastify.listen({ port: 3000 }, (err, address) => {
-  if (err) {
-    fastify.log.error(err);
-    process.exit(1);
-  }
-
-  console.log(`Server is running on ${address}`);
-});
+  return app;
+}
