@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { buildApp } from '../app.js';
 
 test('GET /ping responds with pong', async (t) => {
-  const app = buildApp();
+  const app = buildApp({ databasePath: ':memory:' });
   t.after(() => app.close());
 
   const response = await app.inject({
