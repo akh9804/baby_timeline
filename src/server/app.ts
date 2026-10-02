@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { createDatabase } from './database.js';
 import { createMediaStorage, type MediaStorage } from './media-storage.js';
+import mediaUploadRoutes from './routes/media-upload.js';
 import mediaRoutes from './routes/media.js';
 import pingRoutes from './routes/ping.js';
 
@@ -34,6 +35,7 @@ export function buildApp({
 
   app.register(pingRoutes);
   app.register(mediaRoutes);
+  app.register(mediaUploadRoutes);
 
   return app;
 }

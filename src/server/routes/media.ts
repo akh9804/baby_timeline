@@ -12,6 +12,8 @@ const mediaItemSchema = {
     id: { type: 'integer' },
     filename: { type: 'string' },
     createdAt: { type: 'string' },
+    contentType: { type: ['string', 'null'] },
+    sizeBytes: { type: ['integer', 'null'] },
   },
 } as const;
 
@@ -32,7 +34,7 @@ const mediaRoutes: FastifyPluginAsync = async (fastify) => {
       return fastify.db
         .prepare(
           `
-            SELECT id, filename, created_at AS createdAt
+            SELECT id, filename, created_at AS createdAt, content_type AS contentType, size_bytes AS sizeBytes
             FROM media_items
             ORDER BY id
           `,
@@ -63,7 +65,7 @@ const mediaRoutes: FastifyPluginAsync = async (fastify) => {
       const mediaItem = fastify.db
         .prepare(
           `
-            SELECT id, filename, created_at AS createdAt
+            SELECT id, filename, created_at AS createdAt, content_type AS contentType, size_bytes AS sizeBytes
             FROM media_items
             WHERE id = ?
           `,
