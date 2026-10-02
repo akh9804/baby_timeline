@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildApp } from '../app.js';
+import { buildAuthenticatedTestApp as buildApp } from '../test-app.js';
 
 test('POST /media creates a media item and GET /media lists it', async (t) => {
-  const app = buildApp({ databasePath: ':memory:' });
+  const app = await buildApp({ databasePath: ':memory:' });
   t.after(() => app.close());
 
   const filename = "Mom's birthday.jpg";
@@ -30,7 +30,7 @@ test('POST /media creates a media item and GET /media lists it', async (t) => {
 });
 
 test('POST /media rejects a request without a filename', async (t) => {
-  const app = buildApp({ databasePath: ':memory:' });
+  const app = await buildApp({ databasePath: ':memory:' });
   t.after(() => app.close());
 
   const response = await app.inject({

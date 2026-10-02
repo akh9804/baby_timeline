@@ -37,7 +37,11 @@ function formatDate(value: string) {
 function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -49,6 +53,11 @@ function App() {
       const response = await fetch('/media');
 
       if (!response.ok) {
+        if (response.status === 401) {
+          setIsAuthenticated(false);
+          throw new Error('로그인 시간이 끝났어요. 다시 로그인해 주세요.');
+        }
+
         throw new Error('기록을 불러오지 못했어요. 서버가 실행 중인지 확인해 주세요.');
       }
 
@@ -61,8 +70,69 @@ function App() {
   }
 
   useEffect(() => {
-    void loadMedia();
+    async function checkSession() {
+      try {
+        const response = await fetch('/auth/session');
+
+        if (!response.ok) {
+          throw new Error('로그인 상태를 확인하지 못했어요.');
+        }
+
+        const session = (await response.json()) as { authenticated: boolean };
+        setIsAuthenticated(session.authenticated);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : '로그인 상태를 확인하지 못했어요.');
+      } finally {
+        setIsCheckingSession(false);
+      }
+    }
+
+    void checkSession();
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      void loadMedia();
+    }
+  }, [isAuthenticated]);
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsLoggingIn(true);
+    setErrorMessage('');
+
+    try {
+      const response = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: loginPassword }),
+      });
+
+      if (!response.ok) {
+        const result = (await response.json()) as { message?: string };
+        throw new Error(result.message ?? '로그인하지 못했어요.');
+      }
+
+      setLoginPassword('');
+      setIsAuthenticated(true);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '로그인하지 못했어요.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/auth/logout', { method: 'POST' });
+    } catch {
+      // Clear the private album from this page even if the server is unreachable.
+    } finally {
+      setIsAuthenticated(false);
+      setMediaItems([]);
+      setErrorMessage('');
+    }
+  }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,6 +167,61 @@ function App() {
     }
   }
 
+  if (isCheckingSession) {
+    return <div className="empty-state skeleton">가족 앨범을 확인하고 있어요…</div>;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <header className="site-header">
+          <a className="brand" href="/" aria-label="작은 날들 홈">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
+              <path
+                d="M12 21V10m0 7c-4.5 0-7-2.4-7-6 4.4 0 7 2 7 6Zm0-4c0-4.2 2.6-7 7-7 0 3.9-2.5 7-7 7Z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            작은 날들<span>BABY TIMELINE</span>
+          </a>
+        </header>
+        <main className="page-width login-page">
+          <section className="timeline-intro">
+            <span className="eyebrow">A PRIVATE FAMILY ALBUM</span>
+            <h1>가족 앨범에 로그인해 주세요</h1>
+            <p>가족에게 공유한 비밀번호를 입력하면 소중한 기록을 볼 수 있어요.</p>
+          </section>
+          <section className="form-section login-section" aria-labelledby="login-title">
+            <h2 id="login-title">가족 비밀번호</h2>
+            <form onSubmit={handleLogin}>
+              <label className="login-field">
+                <span>비밀번호</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.currentTarget.value)}
+                  required
+                />
+              </label>
+              {errorMessage && (
+                <div className="error" role="alert">
+                  {errorMessage}
+                </div>
+              )}
+              <button className="button primary full" type="submit" disabled={!loginPassword || isLoggingIn}>
+                {isLoggingIn ? '확인하는 중…' : '앨범 열기'}
+              </button>
+            </form>
+          </section>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <header className="site-header">
@@ -116,6 +241,9 @@ function App() {
           <a className="button primary small" href="#upload">
             <span aria-hidden="true">＋</span> 사진 추가
           </a>
+          <button className="button small logout-button" type="button" onClick={() => void handleLogout()}>
+            로그아웃
+          </button>
         </nav>
       </header>
       <div className="privacy-line">

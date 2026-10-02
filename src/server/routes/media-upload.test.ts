@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import sharp from 'sharp';
-import { buildApp } from '../app.js';
+import { buildAuthenticatedTestApp as buildApp } from '../test-app.js';
 
 function createMultipartPayload(filename: string, contentType: string, content: Buffer, boundary: string) {
   return Buffer.concat([
@@ -18,7 +18,7 @@ function createMultipartPayload(filename: string, contentType: string, content: 
 
 test('POST /media/upload streams a file to disk and GET /media/:id/file streams it back', async (t) => {
   const storageRoot = await mkdtemp(join(tmpdir(), 'baby-timeline-media-'));
-  const app = buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
+  const app = await buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
   t.after(async () => {
     await app.close();
     await rm(storageRoot, { recursive: true, force: true });
@@ -85,7 +85,7 @@ test('POST /media/upload streams a file to disk and GET /media/:id/file streams 
 
 test('POST /media/upload keeps a video when FFmpeg cannot create its poster', async (t) => {
   const storageRoot = await mkdtemp(join(tmpdir(), 'baby-timeline-video-'));
-  const app = buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
+  const app = await buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
   const originalFfmpegPath = process.env.FFMPEG_PATH;
   process.env.FFMPEG_PATH = join(storageRoot, 'missing-ffmpeg');
   t.after(async () => {
@@ -122,7 +122,7 @@ test('POST /media/upload keeps a video when FFmpeg cannot create its poster', as
 
 test('POST /media/upload stores and serves an FFmpeg-generated video poster', async (t) => {
   const storageRoot = await mkdtemp(join(tmpdir(), 'baby-timeline-video-poster-'));
-  const app = buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
+  const app = await buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
   const originalFfmpegPath = process.env.FFMPEG_PATH;
   const poster = await sharp({
     create: { width: 320, height: 180, channels: 3, background: { r: 120, g: 160, b: 190 } },
@@ -171,7 +171,7 @@ test('POST /media/upload stores and serves an FFmpeg-generated video poster', as
 
 test('POST /media/upload rejects invalid image bytes and removes the partial upload', async (t) => {
   const storageRoot = await mkdtemp(join(tmpdir(), 'baby-timeline-invalid-image-'));
-  const app = buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
+  const app = await buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
   t.after(async () => {
     await app.close();
     await rm(storageRoot, { recursive: true, force: true });
@@ -192,7 +192,7 @@ test('POST /media/upload rejects invalid image bytes and removes the partial upl
 
 test('GET /media/:id/thumbnail serves the original image for older uploads without thumbnails', async (t) => {
   const storageRoot = await mkdtemp(join(tmpdir(), 'baby-timeline-legacy-image-'));
-  const app = buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
+  const app = await buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
   t.after(async () => {
     await app.close();
     await rm(storageRoot, { recursive: true, force: true });
@@ -223,7 +223,7 @@ test('GET /media/:id/thumbnail serves the original image for older uploads witho
 });
 
 test('GET /media/:id/file returns 404 when the media item has no uploaded file', async (t) => {
-  const app = buildApp({ databasePath: ':memory:' });
+  const app = await buildApp({ databasePath: ':memory:' });
   t.after(() => app.close());
 
   const response = await app.inject({ method: 'GET', url: '/media/999/file' });

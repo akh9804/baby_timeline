@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildApp } from '../app.js';
+import { buildAuthenticatedTestApp as buildApp } from '../test-app.js';
 
 test('GET /ping responds with pong', async (t) => {
-  const app = buildApp({ databasePath: ':memory:' });
+  const app = await buildApp({ databasePath: ':memory:' });
   t.after(() => app.close());
 
   const response = await app.inject({

@@ -222,6 +222,45 @@ a:focus-visible {
   color: #91a27c;
 }
 
+.login-page {
+  max-width: 620px;
+}
+
+.login-section {
+  margin-top: 28px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.login-field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fffdf9;
+  color: var(--ink);
+}
+
+.login-field input:focus-visible {
+  outline: 3px solid #91ab79;
+  outline-offset: 2px;
+}
+
+.logout-button {
+  border-color: var(--line);
+  background: white;
+  color: var(--ink);
+}
+
 .muted {
   color: var(--muted);
   font-size: 14px;
