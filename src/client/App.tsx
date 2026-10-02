@@ -216,12 +216,13 @@ function App() {
               const fileUrl = `/media/${item.id}/file`;
               const isImage = item.contentType !== null && imageTypes.has(item.contentType);
               const isVideo = item.contentType !== null && videoTypes.has(item.contentType);
+              const previewUrl = isImage ? `/media/${item.id}/thumbnail` : fileUrl;
 
               return (
                 <article className="moment-card archive-card" key={item.id}>
                   <div className="media-item">
                     {isImage ? (
-                      <img src={fileUrl} alt={item.filename} loading="lazy" />
+                      <img src={previewUrl} alt={item.filename} loading="lazy" />
                     ) : isVideo ? (
                       <video src={fileUrl} controls preload="metadata" aria-label={item.filename} />
                     ) : (

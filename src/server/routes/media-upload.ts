@@ -2,9 +2,10 @@ import multipart from '@fastify/multipart';
 import type { FastifyPluginAsync } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { access, mkdir, rm } from 'node:fs/promises';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { createImageThumbnail, ImageProcessingError } from '../image-processing.js';
 
 const maxFileSize = 1024 * 1024 * 1024;
 const mimeTypePattern = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
@@ -18,6 +19,7 @@ const previewableMediaTypes = new Set([
   'video/quicktime',
   'video/webm',
 ]);
+const imageMediaTypes = new Set(['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp']);
 
 interface UploadedMedia {
   id: number;
@@ -51,6 +53,7 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
 
     const storageKey = randomUUID();
     const filePath = fastify.mediaStorage.resolvePath(storageKey);
+    const thumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${storageKey}.webp`);
     let sizeBytes = 0;
 
     await mkdir(fastify.mediaStorage.rootPath, { recursive: true });
@@ -72,6 +75,11 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const contentType = mimeTypePattern.test(file.mimetype) ? file.mimetype : 'application/octet-stream';
+
+      if (imageMediaTypes.has(contentType)) {
+        await createImageThumbnail(filePath, thumbnailPath);
+      }
+
       const result = fastify.db
         .prepare(
           `
@@ -89,6 +97,12 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
       });
     } catch (error) {
       await rm(filePath, { force: true });
+      await rm(thumbnailPath, { force: true });
+
+      if (error instanceof ImageProcessingError) {
+        return reply.code(422).send({ message: 'The uploaded file is not a valid supported image' });
+      }
+
       throw error;
     }
   });
@@ -134,6 +148,57 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
         .header('content-disposition', `${disposition}; filename*=UTF-8''${safeFilename}`)
         .header('x-content-type-options', 'nosniff')
         .send(createReadStream(filePath));
+    },
+  );
+
+  fastify.get<{ Params: { id: string } }>(
+    '/media/:id/thumbnail',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', pattern: '^[1-9][0-9]*$' },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const mediaItem = fastify.db
+        .prepare(
+          `
+            SELECT content_type AS contentType, storage_key AS storageKey
+            FROM media_items
+            WHERE id = ?
+          `,
+        )
+        .get(Number(request.params.id)) as Pick<UploadedMedia, 'contentType' | 'storageKey'> | undefined;
+
+      if (!mediaItem?.storageKey || !mediaItem.contentType || !imageMediaTypes.has(mediaItem.contentType)) {
+        return reply.code(404).send({ message: 'Image thumbnail not found' });
+      }
+
+      let thumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${mediaItem.storageKey}.webp`);
+      let contentType = 'image/webp';
+
+      try {
+        await access(thumbnailPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+
+        // Older uploads have no thumbnail yet, so serve the original until it is reprocessed.
+        thumbnailPath = fastify.mediaStorage.resolvePath(mediaItem.storageKey);
+        contentType = mediaItem.contentType;
+      }
+
+      return reply
+        .header('content-type', contentType)
+        .header('content-disposition', 'inline')
+        .header('x-content-type-options', 'nosniff')
+        .send(createReadStream(thumbnailPath));
     },
   );
 };
