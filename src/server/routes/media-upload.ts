@@ -8,6 +8,16 @@ import { pipeline } from 'node:stream/promises';
 
 const maxFileSize = 1024 * 1024 * 1024;
 const mimeTypePattern = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
+const previewableMediaTypes = new Set([
+  'image/avif',
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+]);
 
 interface UploadedMedia {
   id: number;
@@ -116,11 +126,12 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
       const safeFilename = encodeURIComponent(mediaItem.filename).replace(/[!'()*]/g, (character) => {
         return `%${character.charCodeAt(0).toString(16).toUpperCase()}`;
       });
+      const disposition = previewableMediaTypes.has(mediaItem.contentType) ? 'inline' : 'attachment';
 
       return reply
         .header('content-type', mediaItem.contentType)
         .header('content-length', mediaItem.sizeBytes)
-        .header('content-disposition', `attachment; filename*=UTF-8''${safeFilename}`)
+        .header('content-disposition', `${disposition}; filename*=UTF-8''${safeFilename}`)
         .header('x-content-type-options', 'nosniff')
         .send(createReadStream(filePath));
     },

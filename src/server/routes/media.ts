@@ -36,7 +36,7 @@ const mediaRoutes: FastifyPluginAsync = async (fastify) => {
           `
             SELECT id, filename, created_at AS createdAt, content_type AS contentType, size_bytes AS sizeBytes
             FROM media_items
-            ORDER BY id
+            ORDER BY created_at DESC, id DESC
           `,
         )
         .all();
