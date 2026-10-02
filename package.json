@@ -7,10 +7,10 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "dev": "tsx --watch src/server/server.ts",
+    "dev": "tsx --env-file-if-exists=.env --watch src/server/server.ts",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "build:server": "tsc -p tsconfig.server.json",
-    "start": "node dist/server/server.js",
+    "start": "node --env-file-if-exists=.env dist/server/server.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",

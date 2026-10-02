@@ -20,6 +20,9 @@ pnpm-debug.log*
 *.db-shm
 *.db-wal
 
+# Media storage
+/media/
+
 # Test / Coverage
 coverage/
 
