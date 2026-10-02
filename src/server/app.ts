@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { createDatabase } from './database.js';
+import mediaRoutes from './routes/media.js';
 import pingRoutes from './routes/ping.js';
 
 declare module 'fastify' {
@@ -25,6 +26,7 @@ export function buildApp({ databasePath = 'data/family-media.db' }: BuildAppOpti
   });
 
   app.register(pingRoutes);
+  app.register(mediaRoutes);
 
   return app;
 }
