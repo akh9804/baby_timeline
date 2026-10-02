@@ -8,6 +8,7 @@
   "scripts": {
     "prepare": "husky",
     "dev": "tsx --watch src/server/server.ts",
+    "test": "node --import tsx --test",
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node dist/server/server.js",
     "lint": "eslint .",
