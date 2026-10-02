@@ -6,6 +6,7 @@ import { access, mkdir, rm } from 'node:fs/promises';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createImageThumbnail, ImageProcessingError } from '../image-processing.js';
+import { createVideoThumbnail } from '../video-processing.js';
 
 const maxFileSize = 1024 * 1024 * 1024;
 const mimeTypePattern = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
@@ -20,6 +21,7 @@ const previewableMediaTypes = new Set([
   'video/webm',
 ]);
 const imageMediaTypes = new Set(['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp']);
+const videoMediaTypes = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 
 interface UploadedMedia {
   id: number;
@@ -27,6 +29,7 @@ interface UploadedMedia {
   contentType: string | null;
   sizeBytes: number | null;
   storageKey: string | null;
+  thumbnailContentType: string | null;
 }
 
 const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
@@ -54,6 +57,8 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
     const storageKey = randomUUID();
     const filePath = fastify.mediaStorage.resolvePath(storageKey);
     const thumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${storageKey}.webp`);
+    const videoThumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${storageKey}.jpg`);
+    let thumbnailContentType: string | null = null;
     let sizeBytes = 0;
 
     await mkdir(fastify.mediaStorage.rootPath, { recursive: true });
@@ -78,26 +83,37 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (imageMediaTypes.has(contentType)) {
         await createImageThumbnail(filePath, thumbnailPath);
+        thumbnailContentType = 'image/webp';
+      } else if (videoMediaTypes.has(contentType)) {
+        try {
+          await createVideoThumbnail(filePath, videoThumbnailPath);
+          thumbnailContentType = 'image/jpeg';
+        } catch (error) {
+          fastify.log.warn({ err: error, filename: file.filename }, 'Video thumbnail generation failed');
+          await rm(videoThumbnailPath, { force: true });
+        }
       }
 
       const result = fastify.db
         .prepare(
           `
-            INSERT INTO media_items (filename, storage_key, content_type, size_bytes)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO media_items (filename, storage_key, content_type, thumbnail_content_type, size_bytes)
+            VALUES (?, ?, ?, ?, ?)
           `,
         )
-        .run(file.filename, storageKey, contentType, sizeBytes);
+        .run(file.filename, storageKey, contentType, thumbnailContentType, sizeBytes);
 
       return reply.code(201).send({
         id: Number(result.lastInsertRowid),
         filename: file.filename,
         contentType,
+        thumbnailContentType,
         sizeBytes,
       });
     } catch (error) {
       await rm(filePath, { force: true });
       await rm(thumbnailPath, { force: true });
+      await rm(videoThumbnailPath, { force: true });
 
       if (error instanceof ImageProcessingError) {
         return reply.code(422).send({ message: 'The uploaded file is not a valid supported image' });
@@ -168,19 +184,34 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
       const mediaItem = fastify.db
         .prepare(
           `
-            SELECT content_type AS contentType, storage_key AS storageKey
+            SELECT content_type AS contentType, storage_key AS storageKey,
+              thumbnail_content_type AS thumbnailContentType
             FROM media_items
             WHERE id = ?
           `,
         )
-        .get(Number(request.params.id)) as Pick<UploadedMedia, 'contentType' | 'storageKey'> | undefined;
+        .get(Number(request.params.id)) as
+        Pick<UploadedMedia, 'contentType' | 'storageKey' | 'thumbnailContentType'> | undefined;
 
-      if (!mediaItem?.storageKey || !mediaItem.contentType || !imageMediaTypes.has(mediaItem.contentType)) {
-        return reply.code(404).send({ message: 'Image thumbnail not found' });
+      if (!mediaItem?.storageKey || !mediaItem.contentType) {
+        return reply.code(404).send({ message: 'Media thumbnail not found' });
       }
 
-      let thumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${mediaItem.storageKey}.webp`);
-      let contentType = 'image/webp';
+      const isImage = imageMediaTypes.has(mediaItem.contentType);
+      const isVideo = videoMediaTypes.has(mediaItem.contentType);
+
+      if (!isImage && !isVideo) {
+        return reply.code(404).send({ message: 'Media thumbnail not found' });
+      }
+
+      if (isVideo && mediaItem.thumbnailContentType !== 'image/jpeg') {
+        return reply.code(404).send({ message: 'Video poster not found' });
+      }
+
+      let thumbnailPath = fastify.mediaStorage.resolvePath(
+        `thumbnails/${mediaItem.storageKey}.${mediaItem.thumbnailContentType === 'image/jpeg' ? 'jpg' : 'webp'}`,
+      );
+      let contentType = mediaItem.thumbnailContentType ?? 'image/webp';
 
       try {
         await access(thumbnailPath);
@@ -189,7 +220,11 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
           throw error;
         }
 
-        // Older uploads have no thumbnail yet, so serve the original until it is reprocessed.
+        if (!isImage) {
+          return reply.code(404).send({ message: 'Video poster not found' });
+        }
+
+        // Older image uploads have no thumbnail yet, so serve the original until reprocessed.
         thumbnailPath = fastify.mediaStorage.resolvePath(mediaItem.storageKey);
         contentType = mediaItem.contentType;
       }

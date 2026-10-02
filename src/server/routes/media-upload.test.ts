@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -43,6 +43,7 @@ test('POST /media/upload streams a file to disk and GET /media/:id/file streams 
   const uploadedMedia = uploadResponse.json();
   assert.equal(uploadedMedia.filename, filename);
   assert.equal(uploadedMedia.contentType, contentType);
+  assert.equal(uploadedMedia.thumbnailContentType, 'image/webp');
   assert.equal(uploadedMedia.sizeBytes, content.length);
 
   const storedFiles = await readdir(storageRoot);
@@ -78,7 +79,94 @@ test('POST /media/upload streams a file to disk and GET /media/:id/file streams 
   assert.equal(listedMedia.filename, filename);
   assert.equal(typeof listedMedia.createdAt, 'string');
   assert.equal(listedMedia.contentType, contentType);
+  assert.equal(listedMedia.thumbnailContentType, 'image/webp');
   assert.equal(listedMedia.sizeBytes, content.length);
+});
+
+test('POST /media/upload keeps a video when FFmpeg cannot create its poster', async (t) => {
+  const storageRoot = await mkdtemp(join(tmpdir(), 'baby-timeline-video-'));
+  const app = buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
+  const originalFfmpegPath = process.env.FFMPEG_PATH;
+  process.env.FFMPEG_PATH = join(storageRoot, 'missing-ffmpeg');
+  t.after(async () => {
+    if (originalFfmpegPath === undefined) {
+      delete process.env.FFMPEG_PATH;
+    } else {
+      process.env.FFMPEG_PATH = originalFfmpegPath;
+    }
+
+    await app.close();
+    await rm(storageRoot, { recursive: true, force: true });
+  });
+
+  const boundary = 'video-test-boundary';
+  const content = Buffer.from('video bytes');
+  const uploadResponse = await app.inject({
+    method: 'POST',
+    url: '/media/upload',
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+    payload: createMultipartPayload('first-steps.mp4', 'video/mp4', content, boundary),
+  });
+
+  assert.equal(uploadResponse.statusCode, 201);
+  const uploadedMedia = uploadResponse.json();
+  assert.equal(uploadedMedia.thumbnailContentType, null);
+
+  const fileResponse = await app.inject({ method: 'GET', url: `/media/${uploadedMedia.id}/file` });
+  const posterResponse = await app.inject({ method: 'GET', url: `/media/${uploadedMedia.id}/thumbnail` });
+
+  assert.equal(fileResponse.statusCode, 200);
+  assert.deepEqual(fileResponse.rawPayload, content);
+  assert.equal(posterResponse.statusCode, 404);
+});
+
+test('POST /media/upload stores and serves an FFmpeg-generated video poster', async (t) => {
+  const storageRoot = await mkdtemp(join(tmpdir(), 'baby-timeline-video-poster-'));
+  const app = buildApp({ databasePath: ':memory:', mediaStorageRoot: storageRoot });
+  const originalFfmpegPath = process.env.FFMPEG_PATH;
+  const poster = await sharp({
+    create: { width: 320, height: 180, channels: 3, background: { r: 120, g: 160, b: 190 } },
+  })
+    .jpeg()
+    .toBuffer();
+  const fakeFfmpegPath = join(storageRoot, 'fake-ffmpeg.mjs');
+  await writeFile(
+    fakeFfmpegPath,
+    `#!/usr/bin/env node\nimport { writeFile } from 'node:fs/promises';\nawait writeFile(process.argv.at(-1), Buffer.from('${poster.toString('base64')}', 'base64'));\n`,
+  );
+  await chmod(fakeFfmpegPath, 0o755);
+  process.env.FFMPEG_PATH = fakeFfmpegPath;
+  t.after(async () => {
+    if (originalFfmpegPath === undefined) {
+      delete process.env.FFMPEG_PATH;
+    } else {
+      process.env.FFMPEG_PATH = originalFfmpegPath;
+    }
+
+    await app.close();
+    await rm(storageRoot, { recursive: true, force: true });
+  });
+
+  const boundary = 'video-poster-test-boundary';
+  const uploadResponse = await app.inject({
+    method: 'POST',
+    url: '/media/upload',
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+    payload: createMultipartPayload('first-steps.mp4', 'video/mp4', Buffer.from('video bytes'), boundary),
+  });
+
+  assert.equal(uploadResponse.statusCode, 201);
+  const uploadedMedia = uploadResponse.json();
+  assert.equal(uploadedMedia.thumbnailContentType, 'image/jpeg');
+
+  const posterResponse = await app.inject({ method: 'GET', url: `/media/${uploadedMedia.id}/thumbnail` });
+  const posterMetadata = await sharp(posterResponse.rawPayload).metadata();
+
+  assert.equal(posterResponse.statusCode, 200);
+  assert.equal(posterResponse.headers['content-type'], 'image/jpeg');
+  assert.equal(posterMetadata.format, 'jpeg');
+  assert.equal(posterMetadata.width, 320);
+  assert.equal(posterMetadata.height, 180);
 });
 
 test('POST /media/upload rejects invalid image bytes and removes the partial upload', async (t) => {

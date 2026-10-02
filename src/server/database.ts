@@ -16,6 +16,7 @@ export function createDatabase(databasePath: string): DatabaseSync {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       storage_key TEXT,
       content_type TEXT,
+      thumbnail_content_type TEXT,
       size_bytes INTEGER CHECK (size_bytes >= 0)
     ) STRICT
   `);
@@ -29,6 +30,10 @@ export function createDatabase(databasePath: string): DatabaseSync {
 
   if (!columnNames.has('content_type')) {
     database.exec('ALTER TABLE media_items ADD COLUMN content_type TEXT');
+  }
+
+  if (!columnNames.has('thumbnail_content_type')) {
+    database.exec('ALTER TABLE media_items ADD COLUMN thumbnail_content_type TEXT');
   }
 
   if (!columnNames.has('size_bytes')) {

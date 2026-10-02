@@ -5,6 +5,7 @@ interface MediaItem {
   filename: string;
   createdAt: string;
   contentType: string | null;
+  thumbnailContentType: string | null;
   sizeBytes: number | null;
 }
 
@@ -217,6 +218,7 @@ function App() {
               const isImage = item.contentType !== null && imageTypes.has(item.contentType);
               const isVideo = item.contentType !== null && videoTypes.has(item.contentType);
               const previewUrl = isImage ? `/media/${item.id}/thumbnail` : fileUrl;
+              const posterUrl = isVideo && item.thumbnailContentType ? `/media/${item.id}/thumbnail` : undefined;
 
               return (
                 <article className="moment-card archive-card" key={item.id}>
@@ -224,7 +226,7 @@ function App() {
                     {isImage ? (
                       <img src={previewUrl} alt={item.filename} loading="lazy" />
                     ) : isVideo ? (
-                      <video src={fileUrl} controls preload="metadata" aria-label={item.filename} />
+                      <video src={fileUrl} poster={posterUrl} controls preload="metadata" aria-label={item.filename} />
                     ) : (
                       <div className="media-placeholder">
                         <span aria-hidden="true">✳</span>

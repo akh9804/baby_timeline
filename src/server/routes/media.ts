@@ -6,13 +6,14 @@ interface CreateMediaBody {
 
 const mediaItemSchema = {
   type: 'object',
-  required: ['id', 'filename', 'createdAt'],
+  required: ['id', 'filename', 'createdAt', 'thumbnailContentType'],
   additionalProperties: false,
   properties: {
     id: { type: 'integer' },
     filename: { type: 'string' },
     createdAt: { type: 'string' },
     contentType: { type: ['string', 'null'] },
+    thumbnailContentType: { type: ['string', 'null'] },
     sizeBytes: { type: ['integer', 'null'] },
   },
 } as const;
@@ -34,7 +35,8 @@ const mediaRoutes: FastifyPluginAsync = async (fastify) => {
       return fastify.db
         .prepare(
           `
-            SELECT id, filename, created_at AS createdAt, content_type AS contentType, size_bytes AS sizeBytes
+            SELECT id, filename, created_at AS createdAt, content_type AS contentType,
+              thumbnail_content_type AS thumbnailContentType, size_bytes AS sizeBytes
             FROM media_items
             ORDER BY created_at DESC, id DESC
           `,
@@ -65,7 +67,8 @@ const mediaRoutes: FastifyPluginAsync = async (fastify) => {
       const mediaItem = fastify.db
         .prepare(
           `
-            SELECT id, filename, created_at AS createdAt, content_type AS contentType, size_bytes AS sizeBytes
+            SELECT id, filename, created_at AS createdAt, content_type AS contentType,
+              thumbnail_content_type AS thumbnailContentType, size_bytes AS sizeBytes
             FROM media_items
             WHERE id = ?
           `,

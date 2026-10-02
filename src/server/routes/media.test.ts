@@ -18,6 +18,7 @@ test('POST /media creates a media item and GET /media lists it', async (t) => {
   assert.equal(createdMediaItem.id, 1);
   assert.equal(createdMediaItem.filename, filename);
   assert.equal(typeof createdMediaItem.createdAt, 'string');
+  assert.equal(createdMediaItem.thumbnailContentType, null);
 
   const listResponse = await app.inject({
     method: 'GET',
