@@ -138,6 +138,8 @@ Do not spend time explaining trivial TypeScript or frontend concepts unless they
 
 Prefer small, focused changes.
 
+After completing each requested code or project change and its relevant checks, commit the task's changes and push them to GitHub. This is a standing user preference; no additional confirmation is needed for routine commits and pushes. Exclude unrelated changes, never force-push without explicit authorization, and report any blocked or failed push.
+
 Avoid implementing several major architectural layers in one step unless explicitly requested.
 
 For larger tasks:

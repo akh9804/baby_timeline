@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#fbfaf7" />
+  <rect x="28" y="28" width="1144" height="574" rx="24" fill="none" stroke="#e5e7df" stroke-width="2" />
+  <circle cx="600" cy="177" r="68" fill="#edf1e9" />
+  <g transform="translate(552 125) scale(4)" fill="none" stroke="#476d59" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21V10m0 7c-4.5 0-7-2.4-7-6 4.4 0 7 2 7 6Zm0-4c0-4.2 2.6-7 7-7 0 3.9-2.5 7-7 7Z" />
+  </g>
+  <g text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif">
+    <text x="600" y="337" fill="#35483f" font-size="64" font-weight="700">찰떡이네 작은 날들</text>
+    <text x="600" y="398" fill="#617368" font-size="27">찰떡이네 가족의 사진과 영상을 모아두는 작은 아카이브</text>
+    <text x="600" y="533" fill="#617368" font-size="18" letter-spacing="2">mozzi-family.co.kr</text>
+  </g>
+  <path d="M570 458h60" stroke="#b6c6b5" stroke-width="2" stroke-linecap="round" />
+</svg>
