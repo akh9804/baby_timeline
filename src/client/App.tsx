@@ -36,6 +36,7 @@ function formatDate(value: string) {
 
 function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [activeView, setActiveView] = useState<'timeline' | 'gallery'>('timeline');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loginPassword, setLoginPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -313,8 +314,32 @@ function App() {
         </section>
 
         <div className="section-heading">
-          <h2>우리 가족의 기록</h2>
-          <span>{mediaItems.length}개의 순간</span>
+          <div>
+            <h2>{activeView === 'timeline' ? '우리 가족의 기록' : '사진과 동영상'}</h2>
+            <span className="section-count">
+              {activeView === 'timeline'
+                ? `${mediaItems.length}개의 순간`
+                : `${mediaItems.filter((item) => item.sizeBytes !== null).length}개의 미디어`}
+            </span>
+          </div>
+          <div className="view-switch" role="group" aria-label="앨범 보기 방식">
+            <button
+              className={activeView === 'timeline' ? 'active' : ''}
+              type="button"
+              aria-pressed={activeView === 'timeline'}
+              onClick={() => setActiveView('timeline')}
+            >
+              기록
+            </button>
+            <button
+              className={activeView === 'gallery' ? 'active' : ''}
+              type="button"
+              aria-pressed={activeView === 'gallery'}
+              onClick={() => setActiveView('gallery')}
+            >
+              모아보기
+            </button>
+          </div>
         </div>
 
         {errorMessage && (
@@ -339,6 +364,59 @@ function App() {
               첫 사진 올리기
             </a>
           </div>
+        ) : activeView === 'gallery' ? (
+          mediaItems.filter((item) => item.sizeBytes !== null).length === 0 ? (
+            <div className="empty-state">
+              <div className="icon-box" aria-hidden="true">
+                ✳
+              </div>
+              <h2>아직 모아볼 미디어가 없어요</h2>
+              <p>사진이나 동영상을 올리면 이곳에 격자로 모여요.</p>
+              <a className="button primary" href="#upload">
+                첫 사진 올리기
+              </a>
+            </div>
+          ) : (
+            <div className="gallery-grid">
+              {mediaItems
+                .filter((item) => item.sizeBytes !== null)
+                .map((item) => {
+                  const fileUrl = `/media/${item.id}/file`;
+                  const isImage = item.contentType !== null && imageTypes.has(item.contentType);
+                  const isVideo = item.contentType !== null && videoTypes.has(item.contentType);
+                  const previewUrl =
+                    isImage || (isVideo && item.thumbnailContentType) ? `/media/${item.id}/thumbnail` : fileUrl;
+
+                  return (
+                    <a
+                      className="gallery-tile"
+                      key={item.id}
+                      href={fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`${item.filename}, ${formatDate(item.createdAt)}${isVideo ? ', 동영상' : ''}`}
+                    >
+                      {isImage || isVideo ? (
+                        <img src={previewUrl} alt={item.filename} loading="lazy" />
+                      ) : (
+                        <div className="gallery-file-placeholder">
+                          <span aria-hidden="true">▧</span>미리보기 없음
+                        </div>
+                      )}
+                      {isVideo && (
+                        <span className="video-badge" aria-label="동영상">
+                          ▶
+                        </span>
+                      )}
+                      <span className="gallery-caption">
+                        <span>{item.filename}</span>
+                        <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
+                      </span>
+                    </a>
+                  );
+                })}
+            </div>
+          )
         ) : (
           <div className="archive-grid">
             {mediaItems.map((item) => {
