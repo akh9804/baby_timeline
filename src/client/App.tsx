@@ -150,6 +150,7 @@ function App() {
   const [isEditingChild, setIsEditingChild] = useState(false);
   const [isAddingChild, setIsAddingChild] = useState(false);
   const [viewerMedia, setViewerMedia] = useState<TimelineMedia | null>(null);
+  const [isViewerOriginalLoaded, setIsViewerOriginalLoaded] = useState(false);
   const [commentAuthor, setCommentAuthor] = useState('');
   const [commentContent, setCommentContent] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
@@ -211,6 +212,22 @@ function App() {
   useEffect(() => {
     if (isAuthenticated) void loadTimeline();
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!viewerMedia) {
+      setIsViewerOriginalLoaded(false);
+      return;
+    }
+
+    setIsViewerOriginalLoaded(false);
+    const original = new Image();
+    original.onload = () => setIsViewerOriginalLoaded(true);
+    original.src = `/media/${viewerMedia.id}/file`;
+
+    return () => {
+      original.onload = null;
+    };
+  }, [viewerMedia]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1127,7 +1144,12 @@ function App() {
             <button className="viewer-close" type="button" onClick={() => setViewerMedia(null)} aria-label="사진 닫기">
               ×
             </button>
-            <img src={`/media/${viewerMedia.id}/file`} alt={viewerMedia.filename} />
+            <img
+              src={isViewerOriginalLoaded ? `/media/${viewerMedia.id}/file` : `/media/${viewerMedia.id}/thumbnail`}
+              alt={viewerMedia.filename}
+              decoding="async"
+            />
+            {!isViewerOriginalLoaded && <span className="viewer-loading">고화질 이미지를 불러오는 중…</span>}
           </div>
         </div>
       )}

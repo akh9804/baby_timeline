@@ -502,6 +502,17 @@ a:focus-visible {
   object-fit: contain;
 }
 
+.viewer-loading {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  background: #172019b8;
+  color: white;
+  font-size: 11px;
+}
+
 .viewer-close {
   position: absolute;
   top: -42px;
