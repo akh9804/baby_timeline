@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 interface Child {
   id: number;
@@ -150,8 +150,10 @@ function App() {
   const [isEditingChild, setIsEditingChild] = useState(false);
   const [isAddingChild, setIsAddingChild] = useState(false);
   const [viewerMedia, setViewerMedia] = useState<TimelineMedia | null>(null);
+  const [viewerMediaItems, setViewerMediaItems] = useState<TimelineMedia[]>([]);
   const [isViewerThumbnailLoaded, setIsViewerThumbnailLoaded] = useState(false);
   const [isViewerOriginalLoaded, setIsViewerOriginalLoaded] = useState(false);
+  const viewerTouchStartX = useRef<number | null>(null);
   const [commentAuthor, setCommentAuthor] = useState('');
   const [commentContent, setCommentContent] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
@@ -223,6 +225,11 @@ function App() {
 
     setIsViewerThumbnailLoaded(false);
     setIsViewerOriginalLoaded(false);
+    if (videoTypes.has(viewerMedia.contentType ?? '')) {
+      setIsViewerThumbnailLoaded(true);
+      setIsViewerOriginalLoaded(true);
+      return;
+    }
     const thumbnail = new Image();
     const original = new Image();
     thumbnail.onload = () => setIsViewerThumbnailLoaded(true);
@@ -505,6 +512,38 @@ function App() {
 
   function scrollToRecord() {
     document.getElementById('record-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function openViewer(media: TimelineMedia, mediaItems: TimelineMedia[]) {
+    const supportedMedia = mediaItems.filter(
+      (item) => imageTypes.has(item.contentType ?? '') || videoTypes.has(item.contentType ?? ''),
+    );
+    setViewerMediaItems(supportedMedia);
+    setViewerMedia(media);
+  }
+
+  function closeViewer() {
+    setViewerMedia(null);
+    setViewerMediaItems([]);
+  }
+
+  function moveViewer(direction: -1 | 1) {
+    if (!viewerMedia) return;
+    const currentIndex = viewerMediaItems.findIndex((media) => media.id === viewerMedia.id);
+    const nextMedia = viewerMediaItems[currentIndex + direction];
+    if (nextMedia) setViewerMedia(nextMedia);
+  }
+
+  function handleViewerTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    viewerTouchStartX.current = event.touches[0]?.clientX ?? null;
+  }
+
+  function handleViewerTouchEnd(event: React.TouchEvent<HTMLDivElement>) {
+    const startX = viewerTouchStartX.current;
+    viewerTouchStartX.current = null;
+    const endX = event.changedTouches[0]?.clientX;
+    if (startX === null || endX === undefined || Math.abs(endX - startX) < 50) return;
+    moveViewer(endX < startX ? 1 : -1);
   }
 
   if (isCheckingSession) return <div className="empty-state skeleton">가족 앨범을 확인하고 있어요…</div>;
@@ -911,7 +950,7 @@ function App() {
                       <button
                         className="gallery-image-button"
                         type="button"
-                        onClick={() => setViewerMedia(media)}
+                        onClick={() => openViewer(media, galleryItems)}
                         aria-label={`${media.filename} 크게 보기`}
                       >
                         <img src={previewUrl} alt={media.filename} loading="lazy" />
@@ -990,7 +1029,10 @@ function App() {
                             className="media-tile"
                             type="button"
                             key={media.id}
-                            onClick={() => imageTypes.has(media.contentType ?? '') && setViewerMedia(media)}
+                            onClick={() =>
+                              (imageTypes.has(media.contentType ?? '') || videoTypes.has(media.contentType ?? '')) &&
+                              openViewer(media, moment.media)
+                            }
                           >
                             {imageTypes.has(media.contentType ?? '') ? (
                               <img src={previewUrl} alt={media.filename} loading="lazy" />
@@ -1145,13 +1187,51 @@ function App() {
           className="viewer-backdrop"
           role="dialog"
           aria-label={`${viewerMedia.filename} 크게 보기`}
-          onClick={() => setViewerMedia(null)}
+          onClick={closeViewer}
         >
-          <div className="viewer-panel" onClick={(event) => event.stopPropagation()}>
-            <button className="viewer-close" type="button" onClick={() => setViewerMedia(null)} aria-label="사진 닫기">
+          <div
+            className="viewer-panel"
+            onClick={(event) => event.stopPropagation()}
+            onTouchStart={handleViewerTouchStart}
+            onTouchEnd={handleViewerTouchEnd}
+          >
+            <button className="viewer-close" type="button" onClick={closeViewer} aria-label="확대 보기 닫기">
               ×
             </button>
-            {isViewerThumbnailLoaded ? (
+            {viewerMediaItems.length > 1 && (
+              <>
+                <button
+                  className="viewer-nav viewer-nav-previous"
+                  type="button"
+                  onClick={() => moveViewer(-1)}
+                  disabled={viewerMediaItems.findIndex((media) => media.id === viewerMedia.id) === 0}
+                  aria-label="이전 미디어"
+                >
+                  ‹
+                </button>
+                <button
+                  className="viewer-nav viewer-nav-next"
+                  type="button"
+                  onClick={() => moveViewer(1)}
+                  disabled={
+                    viewerMediaItems.findIndex((media) => media.id === viewerMedia.id) === viewerMediaItems.length - 1
+                  }
+                  aria-label="다음 미디어"
+                >
+                  ›
+                </button>
+              </>
+            )}
+            {videoTypes.has(viewerMedia.contentType ?? '') ? (
+              <video
+                src={`/media/${viewerMedia.id}/file`}
+                poster={viewerMedia.thumbnailContentType ? `/media/${viewerMedia.id}/thumbnail` : undefined}
+                controls
+                autoPlay
+                preload="metadata"
+                aria-label={viewerMedia.filename}
+              />
+            ) : isViewerThumbnailLoaded ? (
               <>
                 <img
                   src={isViewerOriginalLoaded ? `/media/${viewerMedia.id}/file` : `/media/${viewerMedia.id}/thumbnail`}
