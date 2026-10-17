@@ -513,6 +513,22 @@ a:focus-visible {
   font-size: 11px;
 }
 
+.viewer-spinner {
+  display: block;
+  width: 42px;
+  height: 42px;
+  border: 3px solid #ffffff66;
+  border-top-color: white;
+  border-radius: 50%;
+  animation: viewer-spin 0.8s linear infinite;
+}
+
+@keyframes viewer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .viewer-close {
   position: absolute;
   top: -42px;

@@ -150,6 +150,7 @@ function App() {
   const [isEditingChild, setIsEditingChild] = useState(false);
   const [isAddingChild, setIsAddingChild] = useState(false);
   const [viewerMedia, setViewerMedia] = useState<TimelineMedia | null>(null);
+  const [isViewerThumbnailLoaded, setIsViewerThumbnailLoaded] = useState(false);
   const [isViewerOriginalLoaded, setIsViewerOriginalLoaded] = useState(false);
   const [commentAuthor, setCommentAuthor] = useState('');
   const [commentContent, setCommentContent] = useState('');
@@ -215,16 +216,22 @@ function App() {
 
   useEffect(() => {
     if (!viewerMedia) {
+      setIsViewerThumbnailLoaded(false);
       setIsViewerOriginalLoaded(false);
       return;
     }
 
+    setIsViewerThumbnailLoaded(false);
     setIsViewerOriginalLoaded(false);
+    const thumbnail = new Image();
     const original = new Image();
+    thumbnail.onload = () => setIsViewerThumbnailLoaded(true);
     original.onload = () => setIsViewerOriginalLoaded(true);
+    thumbnail.src = `/media/${viewerMedia.id}/thumbnail`;
     original.src = `/media/${viewerMedia.id}/file`;
 
     return () => {
+      thumbnail.onload = null;
       original.onload = null;
     };
   }, [viewerMedia]);
@@ -1144,12 +1151,18 @@ function App() {
             <button className="viewer-close" type="button" onClick={() => setViewerMedia(null)} aria-label="사진 닫기">
               ×
             </button>
-            <img
-              src={isViewerOriginalLoaded ? `/media/${viewerMedia.id}/file` : `/media/${viewerMedia.id}/thumbnail`}
-              alt={viewerMedia.filename}
-              decoding="async"
-            />
-            {!isViewerOriginalLoaded && <span className="viewer-loading">고화질 이미지를 불러오는 중…</span>}
+            {isViewerThumbnailLoaded ? (
+              <>
+                <img
+                  src={isViewerOriginalLoaded ? `/media/${viewerMedia.id}/file` : `/media/${viewerMedia.id}/thumbnail`}
+                  alt={viewerMedia.filename}
+                  decoding="async"
+                />
+                {!isViewerOriginalLoaded && <span className="viewer-loading">고화질 이미지를 불러오는 중…</span>}
+              </>
+            ) : (
+              <span className="viewer-spinner" role="status" aria-label="이미지를 불러오는 중" />
+            )}
           </div>
         </div>
       )}
