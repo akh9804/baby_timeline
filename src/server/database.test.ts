@@ -42,6 +42,20 @@ test('adds upload metadata columns to an existing media_items table', async (t) 
   const columns = database.prepare('PRAGMA table_info(media_items)').all() as Array<{ name: string }>;
   assert.deepEqual(
     columns.map(({ name }) => name),
-    ['id', 'filename', 'created_at', 'storage_key', 'content_type', 'thumbnail_content_type', 'size_bytes'],
+    [
+      'id',
+      'filename',
+      'created_at',
+      'storage_key',
+      'content_type',
+      'thumbnail_content_type',
+      'size_bytes',
+      'moment_id',
+      'captured_at',
+      'width',
+      'height',
+      'duration_seconds',
+      'sort_order',
+    ],
   );
 });

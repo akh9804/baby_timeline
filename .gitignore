@@ -4,6 +4,7 @@ node_modules/
 # Build
 dist/
 build/
+/.tools/
 
 # Environment
 .env
@@ -14,6 +15,7 @@ build/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+/logs/
 
 # SQLite
 *.db

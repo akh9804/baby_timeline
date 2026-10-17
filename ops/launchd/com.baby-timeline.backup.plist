@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.baby-timeline.backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kwanghoonahn/.nvm/versions/node/v24.14.1/bin/node</string>
+    <string>/Users/kwanghoonahn/Desktop/baby_timeline/scripts/backup-database.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DATABASE_PATH</key>
+    <string>/Users/kwanghoonahn/Desktop/baby_timeline/data/family-media.db</string>
+    <key>DATABASE_BACKUP_DIR</key>
+    <string>/Users/kwanghoonahn/Desktop/baby_timeline/data/backups</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>21600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/kwanghoonahn/Desktop/baby_timeline/logs/backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/kwanghoonahn/Desktop/baby_timeline/logs/backup-error.log</string>
+</dict>
+</plist>

@@ -1,6 +1,47 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
-interface MediaItem {
+interface Child {
+  id: number;
+  name: string | null;
+  dueDate: string | null;
+  birthDate: string | null;
+}
+
+interface TimelineMedia {
+  id: number;
+  filename: string;
+  contentType: string | null;
+  thumbnailContentType: string | null;
+  sizeBytes: number | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+}
+
+interface Moment {
+  id: number;
+  title: string;
+  description: string | null;
+  occurredAt: string;
+  media: TimelineMedia[];
+  comments: Comment[];
+}
+
+interface Comment {
+  id: number;
+  author: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TimelineResponse {
+  child: Child | null;
+  moments: Moment[];
+  nextCursor: string | null;
+}
+
+interface LegacyMedia {
   id: number;
   filename: string;
   createdAt: string;
@@ -9,64 +50,143 @@ interface MediaItem {
   sizeBytes: number | null;
 }
 
+type UploadStatus = 'pending' | 'uploading' | 'done' | 'error';
+
+interface UploadItem {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  progress: number;
+  status: UploadStatus;
+}
+
 const imageTypes = new Set(['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp']);
 const videoTypes = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 
-function formatFileSize(sizeBytes: number | null) {
-  if (sizeBytes === null) {
-    return '파일 정보 없음';
-  }
-
-  if (sizeBytes === 0) {
-    return '0 KB';
-  }
-
-  if (sizeBytes < 1024 * 1024) {
-    return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
-  }
-
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+function localDateTime() {
+  const date = new Date();
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function formatDate(value: string) {
-  const date = new Date(`${value.replace(' ', 'T')}Z`);
+  const date = new Date(value.includes('T') ? value : `${value.replace(' ', 'T')}Z`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
 
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(date);
+function formatDay(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value.slice(0, 10)
+    : new Intl.DateTimeFormat('ko-KR', { dateStyle: 'long' }).format(date);
+}
+
+function ageLabel(value: string, child: Child) {
+  const reference = new Date(value);
+  const birth = child.birthDate ? new Date(`${child.birthDate}T00:00:00`) : null;
+  if (birth && !Number.isNaN(reference.getTime())) {
+    const days = Math.max(0, Math.floor((reference.getTime() - birth.getTime()) / 86_400_000));
+    return days === 0 ? 'D+0' : `D+${days}`;
+  }
+  if (child.dueDate) {
+    const due = new Date(`${child.dueDate}T00:00:00`);
+    const weeks = Math.floor((due.getTime() - reference.getTime()) / (7 * 86_400_000));
+    return weeks > 0 ? `만나기 ${weeks}주 전` : '소중한 하루';
+  }
+  return '소중한 하루';
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function uploadFile(file: File, momentId: number, onProgress: (progress: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', `/media/upload?momentId=${momentId}`);
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    });
+    request.addEventListener('load', () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error(`${file.name} 파일을 저장하지 못했어요.`));
+    });
+    request.addEventListener('error', () => reject(new Error(`${file.name} 파일을 업로드하지 못했어요.`)));
+    const formData = new FormData();
+    formData.set('file', file);
+    request.send(formData);
+  });
 }
 
 function App() {
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [activeView, setActiveView] = useState<'timeline' | 'gallery'>('timeline');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [timeline, setTimeline] = useState<TimelineResponse>({ child: null, moments: [], nextCursor: null });
+  const [children, setChildren] = useState<Child[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
+  const [legacyMedia, setLegacyMedia] = useState<LegacyMedia[]>([]);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [isAdminLogin, setIsAdminLogin] = useState(false);
+  const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'viewer' | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [recordTitle, setRecordTitle] = useState('');
+  const [recordDescription, setRecordDescription] = useState('');
+  const [recordDate, setRecordDate] = useState(localDateTime);
+  const [editingMomentId, setEditingMomentId] = useState<number | null>(null);
+  const [childName, setChildName] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [isEditingChild, setIsEditingChild] = useState(false);
+  const [isAddingChild, setIsAddingChild] = useState(false);
+  const [viewerMedia, setViewerMedia] = useState<TimelineMedia | null>(null);
+  const [commentAuthor, setCommentAuthor] = useState('');
+  const [commentContent, setCommentContent] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentAuthor, setEditingCommentAuthor] = useState('');
+  const [editingCommentContent, setEditingCommentContent] = useState('');
+  const [isSavingComment, setIsSavingComment] = useState(false);
 
-  async function loadMedia() {
-    setIsLoading(true);
-    setErrorMessage('');
-
+  async function loadTimeline(cursor?: string, requestedChildId?: number | null) {
+    if (cursor) setIsLoadingMore(true);
+    else setIsLoading(true);
     try {
-      const response = await fetch('/media');
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          setIsAuthenticated(false);
-          throw new Error('로그인 시간이 끝났어요. 다시 로그인해 주세요.');
-        }
-
-        throw new Error('기록을 불러오지 못했어요. 서버가 실행 중인지 확인해 주세요.');
+      let childId = requestedChildId ?? selectedChildId;
+      let mediaResponse: Response | null = null;
+      if (!cursor) {
+        const childrenResponse = await fetch('/children');
+        if (!childrenResponse.ok) throw new Error('아이 정보를 불러오지 못했어요.');
+        const childList = (await childrenResponse.json()) as Child[];
+        setChildren(childList);
+        childId ??= childList[0]?.id ?? null;
+        setSelectedChildId(childId);
+        mediaResponse = await fetch('/media');
       }
-
-      setMediaItems((await response.json()) as MediaItem[]);
+      const query = new URLSearchParams();
+      if (childId) query.set('childId', String(childId));
+      if (cursor) query.set('cursor', cursor);
+      const timelineResponse = await fetch(`/timeline${query.toString() ? `?${query}` : ''}`);
+      if (!timelineResponse.ok || (mediaResponse && !mediaResponse.ok)) throw new Error('기록을 불러오지 못했어요.');
+      const nextPage = (await timelineResponse.json()) as TimelineResponse;
+      setTimeline((current) =>
+        cursor
+          ? { ...nextPage, child: current.child ?? nextPage.child, moments: [...current.moments, ...nextPage.moments] }
+          : nextPage,
+      );
+      if (mediaResponse) setLegacyMedia((await mediaResponse.json()) as LegacyMedia[]);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '기록을 불러오지 못했어요.');
     } finally {
-      setIsLoading(false);
+      if (cursor) setIsLoadingMore(false);
+      else setIsLoading(false);
     }
   }
 
@@ -74,48 +194,42 @@ function App() {
     async function checkSession() {
       try {
         const response = await fetch('/auth/session');
-
-        if (!response.ok) {
-          throw new Error('로그인 상태를 확인하지 못했어요.');
-        }
-
-        const session = (await response.json()) as { authenticated: boolean };
+        const session = (await response.json()) as { authenticated: boolean; role: 'admin' | 'viewer' | null };
         setIsAuthenticated(session.authenticated);
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : '로그인 상태를 확인하지 못했어요.');
+        setUserRole(session.role);
+      } catch {
+        setErrorMessage('로그인 상태를 확인하지 못했어요.');
       } finally {
         setIsCheckingSession(false);
       }
     }
-
     void checkSession();
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      void loadMedia();
-    }
+    if (isAuthenticated) void loadTimeline();
   }, [isAuthenticated]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsLoggingIn(true);
     setErrorMessage('');
-
     try {
       const response = await fetch('/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password: loginPassword }),
+        body: JSON.stringify({ ...(isAdminLogin ? { username: loginUsername } : {}), password: loginPassword }),
       });
-
       if (!response.ok) {
         const result = (await response.json()) as { message?: string };
         throw new Error(result.message ?? '로그인하지 못했어요.');
       }
-
+      const result = (await response.json()) as { role: 'admin' | 'viewer' };
+      setLoginUsername('');
       setLoginPassword('');
+      setIsAdminLogin(false);
       setIsAuthenticated(true);
+      setUserRole(result.role);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '로그인하지 못했어요.');
     } finally {
@@ -124,82 +238,286 @@ function App() {
   }
 
   async function handleLogout() {
+    await fetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    setIsAuthenticated(false);
+    setUserRole(null);
+    setTimeline({ child: null, moments: [], nextCursor: null });
+    setChildren([]);
+    setSelectedChildId(null);
+    setLegacyMedia([]);
+    setErrorMessage('');
+  }
+
+  async function saveChild(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setErrorMessage('');
     try {
-      await fetch('/auth/logout', { method: 'POST' });
-    } catch {
-      // Clear the private album from this page even if the server is unreachable.
+      const isUpdate = Boolean(timeline.child && !isAddingChild);
+      const response = await fetch(isUpdate ? `/children/${timeline.child!.id}` : '/children', {
+        method: isUpdate ? 'PATCH' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: childName || null, dueDate: dueDate || null, birthDate: birthDate || null }),
+      });
+      if (!response.ok) throw new Error('아이 정보를 저장하지 못했어요.');
+      const savedChild = (await response.json()) as Child;
+      setSelectedChildId(savedChild.id);
+      setIsAddingChild(false);
+      setIsEditingChild(false);
+      await loadTimeline(undefined, savedChild.id);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '아이 정보를 저장하지 못했어요.');
     } finally {
-      setIsAuthenticated(false);
-      setMediaItems([]);
-      setErrorMessage('');
+      setIsSaving(false);
     }
   }
 
-  async function handleUpload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
+  function beginChildEdit() {
+    setChildName(timeline.child?.name ?? '');
+    setDueDate(timeline.child?.dueDate ?? '');
+    setBirthDate(timeline.child?.birthDate ?? '');
+    setIsEditingChild(true);
+    setIsAddingChild(false);
+  }
 
-    if (!selectedFile) {
-      setErrorMessage('먼저 사진이나 동영상을 선택해 주세요.');
+  function beginChildAdd() {
+    setChildName('');
+    setDueDate('');
+    setBirthDate('');
+    setIsAddingChild(true);
+    setIsEditingChild(true);
+  }
+
+  function selectChild(childId: number) {
+    setSelectedChildId(childId);
+    resetMomentForm();
+    void loadTimeline(undefined, childId);
+  }
+
+  function beginMomentEdit(moment: Moment) {
+    setEditingMomentId(moment.id);
+    setRecordTitle(moment.title);
+    setRecordDescription(moment.description ?? '');
+    setRecordDate(moment.occurredAt.slice(0, 16));
+    document.getElementById('record-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function resetMomentForm() {
+    setEditingMomentId(null);
+    setRecordTitle('');
+    setRecordDescription('');
+    setRecordDate(localDateTime());
+    setUploadItems((current) => {
+      current.forEach((item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
+  }
+
+  function selectUploadFiles(files: File[]) {
+    setUploadItems((current) => {
+      current.forEach((item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl));
+      return files.map((file, index) => ({
+        id: `${file.name}-${file.lastModified}-${index}`,
+        file,
+        previewUrl: file.type.startsWith('image/') || file.type.startsWith('video/') ? URL.createObjectURL(file) : null,
+        progress: 0,
+        status: 'pending' as UploadStatus,
+      }));
+    });
+  }
+
+  function removeUploadItem(id: string) {
+    setUploadItems((current) => {
+      const item = current.find((entry) => entry.id === id);
+      if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      return current.filter((entry) => entry.id !== id);
+    });
+  }
+
+  async function saveMoment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!timeline.child || !recordTitle.trim()) return;
+    setIsSaving(true);
+    setErrorMessage('');
+    try {
+      const isEditing = editingMomentId !== null;
+      const response = await fetch(isEditing ? `/moments/${editingMomentId}` : '/moments', {
+        method: isEditing ? 'PATCH' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...(isEditing ? {} : { childId: timeline.child.id }),
+          title: recordTitle.trim(),
+          description: recordDescription.trim() || null,
+          occurredAt: new Date(recordDate).toISOString(),
+        }),
+      });
+      if (!response.ok) throw new Error('기록을 저장하지 못했어요.');
+      const moment = (await response.json()) as Moment;
+      if (uploadItems.length > 0) {
+        for (const item of uploadItems) {
+          setUploadItems((current) =>
+            current.map((entry) => (entry.id === item.id ? { ...entry, status: 'uploading' } : entry)),
+          );
+          try {
+            await uploadFile(item.file, moment.id, (progress) => {
+              setUploadItems((current) =>
+                current.map((entry) => (entry.id === item.id ? { ...entry, progress } : entry)),
+              );
+            });
+            setUploadItems((current) =>
+              current.map((entry) => (entry.id === item.id ? { ...entry, progress: 100, status: 'done' } : entry)),
+            );
+          } catch (error) {
+            setUploadItems((current) =>
+              current.map((entry) => (entry.id === item.id ? { ...entry, status: 'error' } : entry)),
+            );
+            throw error;
+          }
+        }
+      }
+      resetMomentForm();
+      await loadTimeline();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '기록을 저장하지 못했어요.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function deleteMoment(momentId: number) {
+    if (!window.confirm('이 기록과 연결된 미디어를 삭제할까요?')) return;
+    const response = await fetch(`/moments/${momentId}`, { method: 'DELETE' });
+    if (!response.ok) setErrorMessage('기록을 삭제하지 못했어요.');
+    else await loadTimeline();
+  }
+
+  async function deleteMedia(mediaId: number) {
+    if (!window.confirm('이 사진 또는 동영상을 삭제할까요?')) return;
+    const response = await fetch(`/media/${mediaId}`, { method: 'DELETE' });
+    if (!response.ok) {
+      setErrorMessage('미디어를 삭제하지 못했어요.');
       return;
     }
+    setTimeline((current) => ({
+      ...current,
+      moments: current.moments.map((moment) => ({
+        ...moment,
+        media: moment.media.filter((media) => media.id !== mediaId),
+      })),
+    }));
+  }
 
-    setIsUploading(true);
-    setErrorMessage('');
-
-    const formData = new FormData();
-    formData.set('file', selectedFile);
-
+  async function addComment(event: FormEvent<HTMLFormElement>, momentId: number) {
+    event.preventDefault();
+    if (!commentAuthor.trim() || !commentContent.trim()) return;
+    setIsSavingComment(true);
     try {
-      const response = await fetch('/media/upload', { method: 'POST', body: formData });
-
-      if (!response.ok) {
-        const result = (await response.json()) as { message?: string };
-        throw new Error(result.message ?? '파일을 저장하지 못했어요.');
-      }
-
-      setSelectedFile(null);
-      form.reset();
-      await loadMedia();
+      const response = await fetch(`/moments/${momentId}/comments`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ author: commentAuthor.trim(), content: commentContent.trim() }),
+      });
+      if (!response.ok) throw new Error('댓글을 저장하지 못했어요.');
+      const comment = (await response.json()) as Comment;
+      setTimeline((current) => ({
+        ...current,
+        moments: current.moments.map((moment) =>
+          moment.id === momentId ? { ...moment, comments: [...moment.comments, comment] } : moment,
+        ),
+      }));
+      setCommentAuthor('');
+      setCommentContent('');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '파일을 저장하지 못했어요.');
+      setErrorMessage(error instanceof Error ? error.message : '댓글을 저장하지 못했어요.');
     } finally {
-      setIsUploading(false);
+      setIsSavingComment(false);
     }
   }
 
-  if (isCheckingSession) {
-    return <div className="empty-state skeleton">가족 앨범을 확인하고 있어요…</div>;
+  async function updateComment(event: FormEvent<HTMLFormElement>, commentId: number) {
+    event.preventDefault();
+    if (!editingCommentAuthor.trim() || !editingCommentContent.trim()) return;
+    setIsSavingComment(true);
+    try {
+      const response = await fetch(`/comments/${commentId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ author: editingCommentAuthor.trim(), content: editingCommentContent.trim() }),
+      });
+      if (!response.ok) throw new Error('댓글을 수정하지 못했어요.');
+      const updated = (await response.json()) as Comment;
+      setTimeline((current) => ({
+        ...current,
+        moments: current.moments.map((moment) => ({
+          ...moment,
+          comments: moment.comments.map((comment) => (comment.id === commentId ? updated : comment)),
+        })),
+      }));
+      setEditingCommentId(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '댓글을 수정하지 못했어요.');
+    } finally {
+      setIsSavingComment(false);
+    }
   }
+
+  async function deleteComment(commentId: number) {
+    if (!window.confirm('이 댓글을 삭제할까요?')) return;
+    const response = await fetch(`/comments/${commentId}`, { method: 'DELETE' });
+    if (!response.ok) {
+      setErrorMessage('댓글을 삭제하지 못했어요.');
+      return;
+    }
+    setTimeline((current) => ({
+      ...current,
+      moments: current.moments.map((moment) => ({
+        ...moment,
+        comments: moment.comments.filter((comment) => comment.id !== commentId),
+      })),
+    }));
+  }
+
+  function scrollToRecord() {
+    document.getElementById('record-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  if (isCheckingSession) return <div className="empty-state skeleton">가족 앨범을 확인하고 있어요…</div>;
 
   if (!isAuthenticated) {
     return (
       <>
         <header className="site-header">
           <a className="brand" href="/" aria-label="작은 날들 홈">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
-              <path
-                d="M12 21V10m0 7c-4.5 0-7-2.4-7-6 4.4 0 7 2 7 6Zm0-4c0-4.2 2.6-7 7-7 0 3.9-2.5 7-7 7Z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            작은 날들<span>BABY TIMELINE</span>
+            ✳ 작은 날들<span>BABY TIMELINE</span>
           </a>
         </header>
         <main className="page-width login-page">
           <section className="timeline-intro">
             <span className="eyebrow">A PRIVATE FAMILY ALBUM</span>
-            <h1>가족 앨범에 로그인해 주세요</h1>
-            <p>가족에게 공유한 비밀번호를 입력하면 소중한 기록을 볼 수 있어요.</p>
+            <h1>{isAdminLogin ? '관리자 계정으로 로그인해 주세요' : '가족 앨범에 로그인해 주세요'}</h1>
+            <p>
+              {isAdminLogin
+                ? '등록된 관리자만 가족의 기록을 남길 수 있어요.'
+                : '가족 비밀번호로 소중한 기록을 만나보세요.'}
+            </p>
           </section>
           <section className="form-section login-section" aria-labelledby="login-title">
-            <h2 id="login-title">가족 비밀번호</h2>
+            <h2 id="login-title">{isAdminLogin ? '관리자 로그인' : '가족 비밀번호'}</h2>
             <form onSubmit={handleLogin}>
+              {isAdminLogin && (
+                <label className="login-field">
+                  <span>관리자 아이디</span>
+                  <input
+                    type="email"
+                    autoComplete="username"
+                    value={loginUsername}
+                    onChange={(event) => setLoginUsername(event.currentTarget.value)}
+                    required
+                  />
+                </label>
+              )}
               <label className="login-field">
-                <span>비밀번호</span>
+                <span>{isAdminLogin ? '관리자 비밀번호' : '가족 비밀번호'}</span>
                 <input
                   type="password"
                   autoComplete="current-password"
@@ -214,261 +532,533 @@ function App() {
                 </div>
               )}
               <button className="button primary full" type="submit" disabled={!loginPassword || isLoggingIn}>
-                {isLoggingIn ? '확인하는 중…' : '앨범 열기'}
+                {isLoggingIn ? '확인하는 중…' : isAdminLogin ? '관리자로 로그인' : '앨범 열기'}
               </button>
             </form>
+            <button
+              className="login-switch"
+              type="button"
+              onClick={() => {
+                setIsAdminLogin((value) => !value);
+                setLoginUsername('');
+                setLoginPassword('');
+                setErrorMessage('');
+              }}
+            >
+              {isAdminLogin ? '← 가족 비밀번호로 들어가기' : '관리자로 로그인'}
+            </button>
           </section>
         </main>
       </>
     );
   }
 
+  const momentsByYear = new Map<string, Moment[]>();
+  for (const moment of timeline.moments) {
+    const year = moment.occurredAt.slice(0, 4);
+    momentsByYear.set(year, [...(momentsByYear.get(year) ?? []), moment]);
+  }
+  const editingMoment =
+    editingMomentId === null ? null : (timeline.moments.find((moment) => moment.id === editingMomentId) ?? null);
+
   return (
     <>
       <header className="site-header">
         <a className="brand" href="/" aria-label="작은 날들 홈">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
-            <path
-              d="M12 21V10m0 7c-4.5 0-7-2.4-7-6 4.4 0 7 2 7 6Zm0-4c0-4.2 2.6-7 7-7 0 3.9-2.5 7-7 7Z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          작은 날들<span>BABY TIMELINE</span>
+          ✳ 작은 날들<span>BABY TIMELINE</span>
         </a>
         <nav aria-label="주요 메뉴">
-          <a className="button primary small" href="#upload">
-            <span aria-hidden="true">＋</span> 사진 추가
-          </a>
+          {userRole === 'admin' && (
+            <button className="button primary small" type="button" onClick={scrollToRecord}>
+              ＋ 기록 남기기
+            </button>
+          )}
           <button className="button small logout-button" type="button" onClick={() => void handleLogout()}>
             로그아웃
           </button>
         </nav>
       </header>
-      <div className="privacy-line">
-        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
-          <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-          <path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.3" />
-        </svg>
-        우리 가족만 함께 보는 비공개 앨범
-      </div>
-
+      <div className="privacy-line">▣ 우리 가족만 함께 보는 비공개 앨범</div>
       <main className="page-width">
         <section className="timeline-intro">
           <span className="eyebrow">EVERY LITTLE MOMENT</span>
-          <h1>
-            우리 가족의 작은 날들
-            <svg viewBox="0 0 24 24" width="27" height="27" fill="none" aria-hidden="true">
-              <path
-                d="M20.8 8.7c0 5-8.8 11-8.8 11s-8.8-6-8.8-11A4.7 4.7 0 0 1 12 6.2a4.7 4.7 0 0 1 8.8 2.5Z"
-                stroke="currentColor"
-                strokeWidth="1.3"
-              />
-            </svg>
-          </h1>
+          <h1>{timeline.child?.name ? `${timeline.child.name}의 작은 날들` : '우리 가족의 작은 날들'} ♡</h1>
           <p>매일 조금씩 자라는 우리, 오래도록 기억하고 싶은 순간들.</p>
           <div className="intro-tags">
-            <span>
-              <span aria-hidden="true">✳</span> 함께 쌓아가는 성장 기록
-            </span>
-            <span>사진과 동영상</span>
+            <span>✳ 함께 쌓아가는 성장 기록</span>
+            {timeline.child?.birthDate && <span>{timeline.child.birthDate.replaceAll('-', '.')} 태어났어요</span>}
+            {timeline.child?.dueDate && !timeline.child.birthDate && (
+              <span>{timeline.child.dueDate.replaceAll('-', '.')} 만날 예정이에요</span>
+            )}
+            {children.length > 1 && (
+              <label className="child-picker">
+                <span>보고 있는 아이</span>
+                <select
+                  value={selectedChildId ?? ''}
+                  onChange={(event) => selectChild(Number(event.currentTarget.value))}
+                >
+                  {children.map((child) => (
+                    <option key={child.id} value={child.id}>
+                      {child.name || `아이 ${child.id}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
         </section>
 
-        <section id="upload" className="form-section upload-section" aria-labelledby="upload-title">
-          <h2 id="upload-title">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-              <path
-                d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v5h14v-5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            새로운 순간 담기
-          </h2>
-          <p className="muted upload-description">사진이나 동영상을 올려 가족의 기록을 시작해 보세요.</p>
-          <form onSubmit={handleUpload}>
-            <label className="dropzone">
-              <svg viewBox="0 0 28 28" width="28" height="28" fill="none" aria-hidden="true">
-                <rect x="3.5" y="4" width="21" height="20" rx="3" stroke="currentColor" strokeWidth="1.4" />
-                <circle cx="10" cy="10" r="2" stroke="currentColor" strokeWidth="1.4" />
-                <path d="m5 21 6-6 4 4 3-3 5 5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-              </svg>
-              <strong>{selectedFile?.name ?? '사진 또는 동영상을 선택해 주세요'}</strong>
-              <span>JPG, PNG, WebP, MP4, MOV · 파일당 최대 1GB</span>
-              <input
-                type="file"
-                accept="image/*,video/*"
-                onChange={(event) => setSelectedFile(event.currentTarget.files?.[0] ?? null)}
-              />
-            </label>
-            <button className="button primary full" type="submit" disabled={!selectedFile || isUploading}>
-              {isUploading ? '저장하는 중…' : '추억 저장하기'}
-            </button>
-          </form>
-          <p className="field-help">원본 파일은 설정한 저장 공간에 그대로 보관됩니다.</p>
-        </section>
+        {userRole === 'admin' && !timeline.child && (
+          <section className="form-section record-editor">
+            <h2>우리 아이를 소개해 주세요</h2>
+            <p className="muted">첫 기록 전에 이름과 날짜를 알려주세요. 나중에 수정할 수 있어요.</p>
+            <form onSubmit={saveChild}>
+              <label className="login-field">
+                <span>이름 또는 태명</span>
+                <input
+                  value={childName}
+                  onChange={(event) => setChildName(event.currentTarget.value)}
+                  required
+                  maxLength={60}
+                />
+              </label>
+              <div className="form-row">
+                <label className="login-field">
+                  <span>출산 예정일</span>
+                  <input type="date" value={dueDate} onChange={(event) => setDueDate(event.currentTarget.value)} />
+                </label>
+                <label className="login-field">
+                  <span>태어난 날</span>
+                  <input type="date" value={birthDate} onChange={(event) => setBirthDate(event.currentTarget.value)} />
+                </label>
+              </div>
+              <button className="button primary full" disabled={isSaving}>
+                아이 정보 저장
+              </button>
+            </form>
+          </section>
+        )}
 
-        <div className="section-heading">
-          <div>
-            <h2>{activeView === 'timeline' ? '우리 가족의 기록' : '사진과 동영상'}</h2>
-            <span className="section-count">
-              {activeView === 'timeline'
-                ? `${mediaItems.length}개의 순간`
-                : `${mediaItems.filter((item) => item.sizeBytes !== null).length}개의 미디어`}
-            </span>
-          </div>
-          <div className="view-switch" role="group" aria-label="앨범 보기 방식">
-            <button
-              className={activeView === 'timeline' ? 'active' : ''}
-              type="button"
-              aria-pressed={activeView === 'timeline'}
-              onClick={() => setActiveView('timeline')}
-            >
-              기록
-            </button>
-            <button
-              className={activeView === 'gallery' ? 'active' : ''}
-              type="button"
-              aria-pressed={activeView === 'gallery'}
-              onClick={() => setActiveView('gallery')}
-            >
-              모아보기
-            </button>
-          </div>
-        </div>
+        {userRole === 'admin' && timeline.child && (
+          <section id="record-editor" className="form-section record-editor" aria-labelledby="record-title">
+            <div className="editor-heading">
+              <div>
+                <h2 id="record-title">{editingMomentId ? '소중한 기록 다듬기' : '오늘의 작은 순간'}</h2>
+                <p className="muted">평범한 하루도 특별한 처음도, 잊고 싶지 않은 순간을 남겨요.</p>
+              </div>
+              <span className="editor-actions">
+                <button className="text-button" type="button" onClick={beginChildEdit}>
+                  아이 정보 수정
+                </button>
+                <button className="text-button" type="button" onClick={beginChildAdd}>
+                  아이 추가
+                </button>
+              </span>
+            </div>
+            <form onSubmit={saveMoment}>
+              <label className="login-field">
+                <span>기록 제목</span>
+                <input
+                  value={recordTitle}
+                  onChange={(event) => setRecordTitle(event.currentTarget.value)}
+                  placeholder="예: 첫 걸음마"
+                  required
+                  maxLength={160}
+                />
+              </label>
+              <label className="login-field">
+                <span>기록 내용</span>
+                <textarea
+                  value={recordDescription}
+                  onChange={(event) => setRecordDescription(event.currentTarget.value)}
+                  rows={3}
+                  maxLength={5000}
+                  placeholder="그날의 이야기를 적어보세요"
+                />
+              </label>
+              <label className="login-field">
+                <span>기록한 날짜</span>
+                <input
+                  type="datetime-local"
+                  value={recordDate}
+                  onChange={(event) => setRecordDate(event.currentTarget.value)}
+                  required
+                />
+              </label>
+              {editingMoment && (
+                <div className="editing-media-list">
+                  <span className="field-label">현재 첨부된 미디어</span>
+                  {editingMoment.media.length ? (
+                    editingMoment.media.map((media) => (
+                      <div className="editing-media-item" key={media.id}>
+                        {imageTypes.has(media.contentType ?? '') ? (
+                          <img src={`/media/${media.id}/thumbnail`} alt={media.filename} />
+                        ) : (
+                          <span className="editing-media-icon">▶</span>
+                        )}
+                        <span>{media.filename}</span>
+                        <button
+                          className="upload-remove"
+                          type="button"
+                          onClick={() => void deleteMedia(media.id)}
+                          disabled={isSaving}
+                          aria-label={`${media.filename} 삭제`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="muted">첨부된 미디어가 없어요.</p>
+                  )}
+                </div>
+              )}
+              <label className="dropzone">
+                <strong>
+                  {uploadItems.length
+                    ? `${uploadItems.length}개의 파일을 추가로 선택했어요`
+                    : editingMomentId
+                      ? '사진 또는 동영상을 추가해 주세요'
+                      : '사진 또는 동영상을 선택해 주세요'}
+                </strong>
+                <span>여러 파일 선택 가능 · JPG, PNG, WebP, MP4, MOV</span>
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  onChange={(event) => {
+                    selectUploadFiles(Array.from(event.currentTarget.files ?? []));
+                    event.currentTarget.value = '';
+                  }}
+                />
+              </label>
+              {uploadItems.length > 0 && (
+                <div className="upload-list" aria-label="업로드할 파일 목록">
+                  <div className="upload-summary">
+                    {uploadItems.length}개 파일 · {uploadItems.filter((item) => item.status === 'done').length}개 업로드
+                    완료
+                  </div>
+                  {uploadItems.map((item) => (
+                    <div className="upload-item" key={item.id}>
+                      {item.previewUrl &&
+                        (item.file.type.startsWith('video/') ? (
+                          <video src={item.previewUrl} muted preload="metadata" />
+                        ) : (
+                          <img src={item.previewUrl} alt="" />
+                        ))}
+                      <div className="upload-item-info">
+                        <strong>{item.file.name}</strong>
+                        <span>
+                          {formatFileSize(item.file.size)} ·{' '}
+                          {item.status === 'uploading'
+                            ? `업로드 중 ${item.progress}%`
+                            : item.status === 'done'
+                              ? '업로드 완료'
+                              : item.status === 'error'
+                                ? '업로드 실패'
+                                : '업로드 대기 중'}
+                        </span>
+                        {item.status === 'uploading' && (
+                          <progress value={item.progress} max="100" aria-label={`${item.file.name} 업로드 진행률`} />
+                        )}
+                      </div>
+                      <button
+                        className="upload-remove"
+                        type="button"
+                        onClick={() => removeUploadItem(item.id)}
+                        disabled={isSaving || item.status === 'uploading'}
+                        aria-label={`${item.file.name} 업로드 목록에서 제거`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="form-actions">
+                <button
+                  className="button primary"
+                  type="submit"
+                  disabled={isSaving || !recordTitle.trim() || (!editingMomentId && uploadItems.length === 0)}
+                >
+                  {isSaving ? '저장하는 중…' : editingMomentId ? '기록 수정하기' : '기록 남기기'}
+                </button>
+                {editingMomentId && (
+                  <button className="button secondary" type="button" onClick={resetMomentForm}>
+                    취소
+                  </button>
+                )}
+              </div>
+            </form>
+          </section>
+        )}
+
+        {isEditingChild && (
+          <section className="form-section child-edit-form">
+            <h2>{isAddingChild ? '아이 추가' : '아이 정보 수정'}</h2>
+            <form onSubmit={saveChild}>
+              <label className="login-field">
+                <span>이름 또는 태명</span>
+                <input value={childName} onChange={(event) => setChildName(event.currentTarget.value)} required />
+              </label>
+              <div className="form-row">
+                <label className="login-field">
+                  <span>출산 예정일</span>
+                  <input type="date" value={dueDate} onChange={(event) => setDueDate(event.currentTarget.value)} />
+                </label>
+                <label className="login-field">
+                  <span>태어난 날</span>
+                  <input type="date" value={birthDate} onChange={(event) => setBirthDate(event.currentTarget.value)} />
+                </label>
+              </div>
+              <div className="form-actions">
+                <button className="button primary" disabled={isSaving}>
+                  아이 정보 저장
+                </button>
+                <button className="button secondary" type="button" onClick={() => setIsEditingChild(false)}>
+                  취소
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
 
         {errorMessage && (
           <div className="error" role="alert">
             {errorMessage}{' '}
-            <button className="retry-button" type="button" onClick={() => void loadMedia()}>
+            <button className="retry-button" type="button" onClick={() => void loadTimeline()}>
               다시 시도
             </button>
           </div>
         )}
-
+        <div className="section-heading">
+          <h2>우리 가족의 타임라인</h2>
+          <span>{timeline.moments.length}개의 기록</span>
+        </div>
         {isLoading ? (
           <div className="empty-state skeleton">소중한 순간을 불러오고 있어요…</div>
-        ) : mediaItems.length === 0 ? (
+        ) : !timeline.moments.length ? (
           <div className="empty-state">
-            <div className="icon-box" aria-hidden="true">
-              ✳
-            </div>
+            <div className="icon-box">✳</div>
             <h2>첫 번째 추억을 기다리고 있어요</h2>
-            <p>작은 순간 하나로 우리 가족의 이야기를 시작해 보세요.</p>
-            <a className="button primary" href="#upload">
-              첫 사진 올리기
-            </a>
+            <p>
+              {userRole === 'admin'
+                ? '작은 순간 하나로 우리 가족의 이야기를 시작해 보세요.'
+                : '가족이 남겨줄 소중한 순간이 곧 이곳에 쌓일 거예요.'}
+            </p>
+            {userRole === 'admin' && timeline.child && (
+              <button className="button primary" type="button" onClick={scrollToRecord}>
+                첫 기록 남기기
+              </button>
+            )}
           </div>
-        ) : activeView === 'gallery' ? (
-          mediaItems.filter((item) => item.sizeBytes !== null).length === 0 ? (
-            <div className="empty-state">
-              <div className="icon-box" aria-hidden="true">
-                ✳
-              </div>
-              <h2>아직 모아볼 미디어가 없어요</h2>
-              <p>사진이나 동영상을 올리면 이곳에 격자로 모여요.</p>
-              <a className="button primary" href="#upload">
-                첫 사진 올리기
-              </a>
-            </div>
-          ) : (
-            <div className="gallery-grid">
-              {mediaItems
-                .filter((item) => item.sizeBytes !== null)
-                .map((item) => {
-                  const fileUrl = `/media/${item.id}/file`;
-                  const isImage = item.contentType !== null && imageTypes.has(item.contentType);
-                  const isVideo = item.contentType !== null && videoTypes.has(item.contentType);
-                  const previewUrl =
-                    isImage || (isVideo && item.thumbnailContentType) ? `/media/${item.id}/thumbnail` : fileUrl;
-
-                  return (
-                    <a
-                      className="gallery-tile"
-                      key={item.id}
-                      href={fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`${item.filename}, ${formatDate(item.createdAt)}${isVideo ? ', 동영상' : ''}`}
-                    >
-                      {isImage || isVideo ? (
-                        <img src={previewUrl} alt={item.filename} loading="lazy" />
-                      ) : (
-                        <div className="gallery-file-placeholder">
-                          <span aria-hidden="true">▧</span>미리보기 없음
-                        </div>
-                      )}
-                      {isVideo && (
-                        <span className="video-badge" aria-label="동영상">
-                          ▶
+        ) : (
+          <div className="timeline-list">
+            {Array.from(momentsByYear.entries()).map(([year, yearMoments]) => (
+              <section key={year} className="timeline-year">
+                <div className="year-label">
+                  {year}
+                  <span>OUR STORY</span>
+                </div>
+                {yearMoments.map((moment) => (
+                  <article className="moment-card" key={moment.id}>
+                    <div className="moment-top">
+                      <span className="age-badge">
+                        {timeline.child ? ageLabel(moment.occurredAt, timeline.child) : '소중한 하루'}
+                      </span>
+                      {userRole === 'admin' && (
+                        <span className="moment-actions">
+                          <button className="text-button" type="button" onClick={() => beginMomentEdit(moment)}>
+                            수정
+                          </button>
+                          <button
+                            className="text-button danger"
+                            type="button"
+                            onClick={() => void deleteMoment(moment.id)}
+                          >
+                            삭제
+                          </button>
                         </span>
                       )}
-                      <span className="gallery-caption">
-                        <span>{item.filename}</span>
-                        <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
+                    </div>
+                    <h2>{moment.title}</h2>
+                    {moment.description && <p className="moment-description">{moment.description}</p>}
+                    <div className={`media-grid${moment.media.length === 1 ? ' single' : ''}`}>
+                      {moment.media.map((media) => {
+                        const fileUrl = `/media/${media.id}/file`;
+                        const previewUrl = imageTypes.has(media.contentType ?? '')
+                          ? `/media/${media.id}/thumbnail`
+                          : fileUrl;
+                        return (
+                          <button
+                            className="media-tile"
+                            type="button"
+                            key={media.id}
+                            onClick={() => imageTypes.has(media.contentType ?? '') && setViewerMedia(media)}
+                          >
+                            {imageTypes.has(media.contentType ?? '') ? (
+                              <img src={previewUrl} alt={media.filename} loading="lazy" />
+                            ) : videoTypes.has(media.contentType ?? '') ? (
+                              <video src={fileUrl} controls preload="metadata" aria-label={media.filename} />
+                            ) : (
+                              <span>{media.filename}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <section className="comments" aria-label={`${moment.title} 댓글`}>
+                      <div className="comments-heading">
+                        <h3>댓글</h3>
+                        <span>{moment.comments.length}개</span>
+                      </div>
+                      {moment.comments.map((comment) =>
+                        editingCommentId === comment.id ? (
+                          <form
+                            className="comment-edit-form"
+                            key={comment.id}
+                            onSubmit={(event) => void updateComment(event, comment.id)}
+                          >
+                            <input
+                              value={editingCommentAuthor}
+                              onChange={(event) => setEditingCommentAuthor(event.currentTarget.value)}
+                              maxLength={60}
+                              aria-label="댓글 작성자"
+                            />
+                            <textarea
+                              value={editingCommentContent}
+                              onChange={(event) => setEditingCommentContent(event.currentTarget.value)}
+                              maxLength={2000}
+                              rows={2}
+                              aria-label="댓글 내용"
+                            />
+                            <div className="comment-actions">
+                              <button className="text-button" type="submit" disabled={isSavingComment}>
+                                저장
+                              </button>
+                              <button className="text-button" type="button" onClick={() => setEditingCommentId(null)}>
+                                취소
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="comment-item" key={comment.id}>
+                            <div>
+                              <strong>{comment.author}</strong>
+                              <p>{comment.content}</p>
+                            </div>
+                            <span className="comment-actions">
+                              <button
+                                className="text-button"
+                                type="button"
+                                onClick={() => {
+                                  setEditingCommentId(comment.id);
+                                  setEditingCommentAuthor(comment.author);
+                                  setEditingCommentContent(comment.content);
+                                }}
+                              >
+                                수정
+                              </button>
+                              <button
+                                className="text-button danger"
+                                type="button"
+                                onClick={() => void deleteComment(comment.id)}
+                              >
+                                삭제
+                              </button>
+                            </span>
+                          </div>
+                        ),
+                      )}
+                      <form className="comment-form" onSubmit={(event) => void addComment(event, moment.id)}>
+                        <input
+                          value={commentAuthor}
+                          onChange={(event) => setCommentAuthor(event.currentTarget.value)}
+                          placeholder="작성자"
+                          maxLength={60}
+                          required
+                          aria-label="댓글 작성자"
+                        />
+                        <input
+                          value={commentContent}
+                          onChange={(event) => setCommentContent(event.currentTarget.value)}
+                          placeholder="댓글을 남겨보세요"
+                          maxLength={2000}
+                          required
+                          aria-label="댓글 내용"
+                        />
+                        <button className="button secondary" type="submit" disabled={isSavingComment}>
+                          등록
+                        </button>
+                      </form>
+                    </section>
+                    <footer>
+                      <time dateTime={moment.occurredAt}>{formatDay(moment.occurredAt)}</time>
+                      <span>
+                        {moment.media.length}개의 미디어 · {formatDate(moment.occurredAt)}
                       </span>
-                    </a>
-                  );
-                })}
-            </div>
-          )
-        ) : (
-          <div className="archive-grid">
-            {mediaItems.map((item) => {
-              const fileUrl = `/media/${item.id}/file`;
-              const isImage = item.contentType !== null && imageTypes.has(item.contentType);
-              const isVideo = item.contentType !== null && videoTypes.has(item.contentType);
-              const previewUrl = isImage ? `/media/${item.id}/thumbnail` : fileUrl;
-              const posterUrl = isVideo && item.thumbnailContentType ? `/media/${item.id}/thumbnail` : undefined;
+                    </footer>
+                  </article>
+                ))}
+              </section>
+            ))}
+          </div>
+        )}
+        {timeline.nextCursor && (
+          <button
+            className="button secondary load-more"
+            type="button"
+            disabled={isLoadingMore}
+            onClick={() => void loadTimeline(timeline.nextCursor ?? undefined)}
+          >
+            {isLoadingMore ? '불러오는 중…' : '이전 순간 더 보기'}
+          </button>
+        )}
 
-              return (
+        {!timeline.moments.length && legacyMedia.length > 0 && (
+          <section className="legacy-section">
+            <div className="section-heading">
+              <h2>기존 업로드</h2>
+              <span>새 기록에 연결되지 않은 파일</span>
+            </div>
+            <div className="archive-grid">
+              {legacyMedia.map((item) => (
                 <article className="moment-card archive-card" key={item.id}>
                   <div className="media-item">
-                    {isImage ? (
-                      <img src={previewUrl} alt={item.filename} loading="lazy" />
-                    ) : isVideo ? (
-                      <video src={fileUrl} poster={posterUrl} controls preload="metadata" aria-label={item.filename} />
+                    {imageTypes.has(item.contentType ?? '') ? (
+                      <img src={`/media/${item.id}/thumbnail`} alt={item.filename} loading="lazy" />
+                    ) : videoTypes.has(item.contentType ?? '') ? (
+                      <video src={`/media/${item.id}/file`} controls preload="metadata" />
                     ) : (
-                      <div className="media-placeholder">
-                        <span aria-hidden="true">✳</span>
-                        {item.sizeBytes === null
-                          ? '업로드된 파일이 없는 기록이에요.'
-                          : '미리보기를 지원하지 않는 파일이에요.'}
-                      </div>
+                      <div className="media-placeholder">{item.filename}</div>
                     )}
                   </div>
                   <footer>
-                    <span className="archive-filename" title={item.filename}>
-                      {item.filename}
-                    </span>
-                    <time dateTime={item.createdAt}>{formatDate(item.createdAt)}</time>
-                    {item.sizeBytes !== null ? (
-                      <a
-                        className="download-link"
-                        href={fileUrl}
-                        download={item.filename}
-                        aria-label={`${item.filename} 다운로드`}
-                      >
-                        다운로드 ↓
-                      </a>
-                    ) : (
-                      <span className="file-missing">파일 없음</span>
-                    )}
-                    <span>{formatFileSize(item.sizeBytes)}</span>
+                    <span>{item.filename}</span>
+                    <time>{formatDate(item.createdAt)}</time>
                   </footer>
                 </article>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          </section>
         )}
-
         <p className="album-footer">작은 날들, 오래 남을 이야기.</p>
       </main>
+      {viewerMedia && (
+        <div
+          className="viewer-backdrop"
+          role="dialog"
+          aria-label={`${viewerMedia.filename} 크게 보기`}
+          onClick={() => setViewerMedia(null)}
+        >
+          <div className="viewer-panel" onClick={(event) => event.stopPropagation()}>
+            <button className="viewer-close" type="button" onClick={() => setViewerMedia(null)} aria-label="사진 닫기">
+              ×
+            </button>
+            <img src={`/media/${viewerMedia.id}/file`} alt={viewerMedia.filename} />
+          </div>
+        </div>
+      )}
     </>
   );
 }

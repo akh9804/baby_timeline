@@ -1,58 +1,75 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import type { AuthenticationAccount, UserRole } from '../authentication.js';
 
 const sessionCookieName = 'baby_timeline_session';
 const sessionLifetimeSeconds = 60 * 60 * 24 * 7;
 const sessionLifetimeMs = sessionLifetimeSeconds * 1000;
 
 interface AuthRouteOptions {
-  password: string;
+  accounts: AuthenticationAccount[];
   secureCookies: boolean;
-  sessions: Map<string, number>;
+  sessions: Map<string, { expiresAt: number; accountId: string; role: UserRole }>;
 }
 
 interface LoginBody {
+  username?: string;
   password: string;
 }
 
-export function isAuthenticatedSession(request: FastifyRequest, sessions: Map<string, number>): boolean {
+export function isAuthenticatedSession(
+  request: FastifyRequest,
+  sessions: Map<string, { expiresAt: number; accountId: string; role: UserRole }>,
+): { accountId: string; role: UserRole } | undefined {
   const cookieValue = request.cookies[sessionCookieName];
 
   if (!cookieValue) {
-    return false;
+    return undefined;
   }
 
   const session = request.unsignCookie(cookieValue);
 
   if (!session.valid || !session.value) {
-    return false;
+    return undefined;
   }
 
-  const expiresAt = sessions.get(session.value);
+  const sessionRecord = sessions.get(session.value);
 
-  if (expiresAt === undefined) {
-    return false;
+  if (sessionRecord === undefined) {
+    return undefined;
   }
 
-  if (expiresAt <= Date.now()) {
+  if (sessionRecord.expiresAt <= Date.now()) {
     sessions.delete(session.value);
-    return false;
+    return undefined;
   }
 
-  return true;
+  return { accountId: sessionRecord.accountId, role: sessionRecord.role };
 }
 
-function passwordsMatch(providedPassword: string, configuredPassword: string): boolean {
+function findMatchingAccount(
+  username: string | undefined,
+  providedPassword: string,
+  accounts: AuthenticationAccount[],
+): AuthenticationAccount | undefined {
   const providedHash = createHash('sha256').update(providedPassword).digest();
-  const configuredHash = createHash('sha256').update(configuredPassword).digest();
 
-  return timingSafeEqual(providedHash, configuredHash);
+  return accounts.find((account) => {
+    if (username ? account.username !== username : account.username !== undefined) {
+      return false;
+    }
+
+    const configuredHash = createHash('sha256').update(account.password).digest();
+    return timingSafeEqual(providedHash, configuredHash);
+  });
 }
 
 const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (fastify, options) => {
-  fastify.get('/auth/session', async (request) => ({
-    authenticated: isAuthenticatedSession(request, options.sessions),
-  }));
+  fastify.get('/auth/session', async (request) => {
+    const session = isAuthenticatedSession(request, options.sessions);
+
+    return { authenticated: Boolean(session), role: session?.role ?? null };
+  });
 
   fastify.post<{ Body: LoginBody }>(
     '/auth/login',
@@ -69,26 +86,33 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (fastify, options
           required: ['password'],
           additionalProperties: false,
           properties: {
+            username: { type: 'string', minLength: 1, maxLength: 320 },
             password: { type: 'string', minLength: 1, maxLength: 1024 },
           },
         },
       },
     },
     async (request, reply) => {
-      if (!passwordsMatch(request.body.password, options.password)) {
+      const account = findMatchingAccount(request.body.username, request.body.password, options.accounts);
+
+      if (!account) {
         return reply.code(401).send({ message: '비밀번호가 올바르지 않습니다.' });
       }
 
       const sessionValue = randomUUID();
       const now = Date.now();
 
-      for (const [sessionId, expiresAt] of options.sessions) {
-        if (expiresAt <= now) {
+      for (const [sessionId, sessionRecord] of options.sessions) {
+        if (sessionRecord.expiresAt <= now) {
           options.sessions.delete(sessionId);
         }
       }
 
-      options.sessions.set(sessionValue, now + sessionLifetimeMs);
+      options.sessions.set(sessionValue, {
+        expiresAt: now + sessionLifetimeMs,
+        accountId: account.id,
+        role: account.role,
+      });
 
       return reply
         .setCookie(sessionCookieName, sessionValue, {
@@ -99,7 +123,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (fastify, options
           maxAge: sessionLifetimeSeconds,
           signed: true,
         })
-        .send({ authenticated: true });
+        .send({ authenticated: true, role: account.role });
     },
   );
 
@@ -118,7 +142,7 @@ const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (fastify, options
         sameSite: 'strict',
         path: '/',
       })
-      .send({ authenticated: false });
+      .send({ authenticated: false, role: null });
   });
 };
 

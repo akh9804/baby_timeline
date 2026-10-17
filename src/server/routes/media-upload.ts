@@ -32,6 +32,10 @@ interface UploadedMedia {
   thumbnailContentType: string | null;
 }
 
+interface UploadQuery {
+  momentId?: string;
+}
+
 const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.register(multipart, {
     limits: {
@@ -42,86 +46,149 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
     },
   });
 
-  fastify.post('/media/upload', async (request, reply) => {
-    const file = await request.file();
-
-    if (!file) {
-      return reply.code(400).send({ message: 'A file is required' });
-    }
-
-    if (!file.filename || file.filename.length > 255) {
-      file.file.resume();
-      return reply.code(400).send({ message: 'Filename must be between 1 and 255 characters' });
-    }
-
-    const storageKey = randomUUID();
-    const filePath = fastify.mediaStorage.resolvePath(storageKey);
-    const thumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${storageKey}.webp`);
-    const videoThumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${storageKey}.jpg`);
-    let thumbnailContentType: string | null = null;
-    let sizeBytes = 0;
-
-    await mkdir(fastify.mediaStorage.rootPath, { recursive: true });
-
-    try {
-      const countBytes = new Transform({
-        transform(chunk: Buffer, _encoding, callback) {
-          sizeBytes += chunk.length;
-          callback(null, chunk);
+  fastify.post<{ Querystring: UploadQuery }>(
+    '/media/upload',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            momentId: { type: 'string', pattern: '^[1-9][0-9]*$' },
+          },
         },
-      });
+      },
+      preHandler: async (request, reply) => {
+        if (request.auth?.role !== 'admin') {
+          return reply.code(403).send({ message: 'Administrator access required' });
+        }
+      },
+    },
+    async (request, reply) => {
+      const file = await request.file();
 
-      await pipeline(file.file, countBytes, createWriteStream(filePath, { flags: 'wx' }));
+      if (!file) {
+        return reply.code(400).send({ message: 'A file is required' });
+      }
 
-      if (file.file.truncated) {
-        const error = new Error(`Uploaded file exceeds the ${maxFileSize} byte limit`);
-        Object.assign(error, { statusCode: 413 });
+      if (!file.filename || file.filename.length > 255) {
+        file.file.resume();
+        return reply.code(400).send({ message: 'Filename must be between 1 and 255 characters' });
+      }
+
+      const storageKey = randomUUID();
+      const filePath = fastify.mediaStorage.resolvePath(storageKey);
+      const thumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${storageKey}.webp`);
+      const videoThumbnailPath = fastify.mediaStorage.resolvePath(`thumbnails/${storageKey}.jpg`);
+      let thumbnailContentType: string | null = null;
+      let sizeBytes = 0;
+
+      await mkdir(fastify.mediaStorage.rootPath, { recursive: true });
+
+      try {
+        const countBytes = new Transform({
+          transform(chunk: Buffer, _encoding, callback) {
+            sizeBytes += chunk.length;
+            callback(null, chunk);
+          },
+        });
+
+        await pipeline(file.file, countBytes, createWriteStream(filePath, { flags: 'wx' }));
+
+        if (file.file.truncated) {
+          const error = new Error(`Uploaded file exceeds the ${maxFileSize} byte limit`);
+          Object.assign(error, { statusCode: 413 });
+          throw error;
+        }
+
+        const contentType = mimeTypePattern.test(file.mimetype) ? file.mimetype : 'application/octet-stream';
+
+        if (imageMediaTypes.has(contentType)) {
+          await createImageThumbnail(filePath, thumbnailPath);
+          thumbnailContentType = 'image/webp';
+        } else if (videoMediaTypes.has(contentType)) {
+          try {
+            await createVideoThumbnail(filePath, videoThumbnailPath);
+            thumbnailContentType = 'image/jpeg';
+          } catch (error) {
+            fastify.log.warn({ err: error, filename: file.filename }, 'Video thumbnail generation failed');
+            await rm(videoThumbnailPath, { force: true });
+          }
+        }
+
+        const momentId = request.query.momentId ? Number(request.query.momentId) : null;
+        if (momentId !== null) {
+          const moment = fastify.db.prepare('SELECT id FROM moments WHERE id = ?').get(momentId);
+          if (!moment) {
+            throw Object.assign(new Error('Moment not found'), { statusCode: 404 });
+          }
+        }
+
+        const result = fastify.db
+          .prepare(
+            `
+            INSERT INTO media_items (filename, storage_key, content_type, thumbnail_content_type, size_bytes, moment_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `,
+          )
+          .run(file.filename, storageKey, contentType, thumbnailContentType, sizeBytes, momentId);
+
+        return reply.code(201).send({
+          id: Number(result.lastInsertRowid),
+          filename: file.filename,
+          contentType,
+          thumbnailContentType,
+          sizeBytes,
+        });
+      } catch (error) {
+        await rm(filePath, { force: true });
+        await rm(thumbnailPath, { force: true });
+        await rm(videoThumbnailPath, { force: true });
+
+        if (error instanceof ImageProcessingError) {
+          return reply.code(422).send({ message: 'The uploaded file is not a valid supported image' });
+        }
+
         throw error;
       }
+    },
+  );
 
-      const contentType = mimeTypePattern.test(file.mimetype) ? file.mimetype : 'application/octet-stream';
-
-      if (imageMediaTypes.has(contentType)) {
-        await createImageThumbnail(filePath, thumbnailPath);
-        thumbnailContentType = 'image/webp';
-      } else if (videoMediaTypes.has(contentType)) {
-        try {
-          await createVideoThumbnail(filePath, videoThumbnailPath);
-          thumbnailContentType = 'image/jpeg';
-        } catch (error) {
-          fastify.log.warn({ err: error, filename: file.filename }, 'Video thumbnail generation failed');
-          await rm(videoThumbnailPath, { force: true });
+  fastify.delete<{ Params: { id: string } }>(
+    '/media/:id',
+    {
+      preHandler: async (request, reply) => {
+        if (request.auth?.role !== 'admin') {
+          return reply.code(403).send({ message: 'Administrator access required' });
         }
+      },
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', pattern: '^[1-9][0-9]*$' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const mediaItem = fastify.db
+        .prepare('SELECT storage_key AS storageKey FROM media_items WHERE id = ?')
+        .get(Number(request.params.id)) as { storageKey: string | null } | undefined;
+
+      if (!mediaItem) return reply.code(404).send({ message: 'Media file not found' });
+
+      fastify.db.prepare('DELETE FROM media_items WHERE id = ?').run(Number(request.params.id));
+      if (mediaItem.storageKey) {
+        await Promise.all([
+          rm(fastify.mediaStorage.resolvePath(mediaItem.storageKey), { force: true }),
+          rm(fastify.mediaStorage.resolvePath(`thumbnails/${mediaItem.storageKey}.webp`), { force: true }),
+          rm(fastify.mediaStorage.resolvePath(`thumbnails/${mediaItem.storageKey}.jpg`), { force: true }),
+        ]);
       }
 
-      const result = fastify.db
-        .prepare(
-          `
-            INSERT INTO media_items (filename, storage_key, content_type, thumbnail_content_type, size_bytes)
-            VALUES (?, ?, ?, ?, ?)
-          `,
-        )
-        .run(file.filename, storageKey, contentType, thumbnailContentType, sizeBytes);
-
-      return reply.code(201).send({
-        id: Number(result.lastInsertRowid),
-        filename: file.filename,
-        contentType,
-        thumbnailContentType,
-        sizeBytes,
-      });
-    } catch (error) {
-      await rm(filePath, { force: true });
-      await rm(thumbnailPath, { force: true });
-      await rm(videoThumbnailPath, { force: true });
-
-      if (error instanceof ImageProcessingError) {
-        return reply.code(422).send({ message: 'The uploaded file is not a valid supported image' });
-      }
-
-      throw error;
-    }
-  });
+      return reply.code(204).send();
+    },
+  );
 
   fastify.get<{ Params: { id: string } }>(
     '/media/:id/file',

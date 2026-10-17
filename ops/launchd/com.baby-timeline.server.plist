@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.baby-timeline.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/kwanghoonahn/.nvm/versions/node/v24.14.1/bin/node</string>
+    <string>/Users/kwanghoonahn/Desktop/baby_timeline/scripts/production-server.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CLIENT_ROOT</key>
+    <string>/Users/kwanghoonahn/Desktop/baby_timeline/dist/client</string>
+    <key>DATABASE_PATH</key>
+    <string>/Users/kwanghoonahn/Desktop/baby_timeline/data/family-media.db</string>
+    <key>MEDIA_STORAGE_ROOT</key>
+    <string>/Users/kwanghoonahn/Desktop/baby_timeline/media</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/kwanghoonahn/Desktop/baby_timeline/logs/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/kwanghoonahn/Desktop/baby_timeline/logs/server-error.log</string>
+</dict>
+</plist>

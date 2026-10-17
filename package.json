@@ -12,6 +12,7 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "build:server": "tsc -p tsconfig.server.json",
     "build:client": "pnpm run typecheck:client && vite build --config vite.config.ts",
+    "backup": "node scripts/backup-database.mjs",
     "typecheck:client": "tsc -p tsconfig.client.json",
     "start": "node --env-file-if-exists=.env dist/server/server.js",
     "lint": "eslint .",

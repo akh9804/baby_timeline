@@ -3,7 +3,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import { buildApp, type BuildAppOptions } from './app.js';
 
 export const testAuthentication = {
-  password: 'test-family-password',
+  accounts: [
+    { id: 'test-admin', username: 'test-admin@example.com', password: 'test-family-password', role: 'admin' as const },
+  ],
   cookieSecret: 'test-cookie-secret-that-is-long-enough',
   secureCookies: false,
 };
@@ -21,7 +23,10 @@ export async function buildAuthenticatedTestApp(
   const login = await app.inject({
     method: 'POST',
     url: '/auth/login',
-    payload: { password: testAuthentication.password },
+    payload: {
+      username: testAuthentication.accounts[0]!.username,
+      password: testAuthentication.accounts[0]!.password,
+    },
   });
   const setCookieHeader = login.headers['set-cookie'];
   const setCookie = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
