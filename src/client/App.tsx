@@ -882,7 +882,7 @@ function App() {
                 const previewUrl = isImage ? `/media/${media.id}/thumbnail` : fileUrl;
 
                 return (
-                  <article className="gallery-tile" key={media.id}>
+                  <article className={`gallery-tile${isVideo ? ' video-gallery-tile' : ''}`} key={media.id}>
                     {isImage ? (
                       <button
                         className="gallery-image-button"

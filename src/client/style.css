@@ -902,6 +902,7 @@ a:focus-visible {
 }
 
 .gallery-caption {
+  pointer-events: none;
   position: absolute;
   right: 0;
   bottom: 0;
@@ -914,6 +915,12 @@ a:focus-visible {
   color: white;
   font-size: 10px;
   line-height: 1.45;
+}
+
+.video-gallery-tile .gallery-caption {
+  top: 0;
+  bottom: auto;
+  background: linear-gradient(#172019b8, transparent);
 }
 
 .gallery-caption > span {
