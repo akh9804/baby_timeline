@@ -51,6 +51,7 @@ interface LegacyMedia {
 }
 
 type UploadStatus = 'pending' | 'uploading' | 'done' | 'error';
+type ViewMode = 'timeline' | 'gallery';
 
 interface UploadItem {
   id: string;
@@ -123,6 +124,7 @@ function uploadFile(file: File, momentId: number, onProgress: (progress: number)
 
 function App() {
   const [timeline, setTimeline] = useState<TimelineResponse>({ child: null, moments: [], nextCursor: null });
+  const [viewMode, setViewMode] = useState<ViewMode>('timeline');
   const [children, setChildren] = useState<Child[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
   const [legacyMedia, setLegacyMedia] = useState<LegacyMedia[]>([]);
@@ -560,6 +562,11 @@ function App() {
   }
   const editingMoment =
     editingMomentId === null ? null : (timeline.moments.find((moment) => moment.id === editingMomentId) ?? null);
+  const galleryItems = timeline.moments.flatMap((moment) =>
+    moment.media
+      .filter((media) => imageTypes.has(media.contentType ?? '') || videoTypes.has(media.contentType ?? ''))
+      .map((media) => ({ ...media, momentTitle: moment.title, occurredAt: moment.occurredAt })),
+  );
 
   return (
     <>
@@ -832,11 +839,76 @@ function App() {
           </div>
         )}
         <div className="section-heading">
-          <h2>우리 가족의 타임라인</h2>
-          <span>{timeline.moments.length}개의 기록</span>
+          <div>
+            <h2>{viewMode === 'timeline' ? '우리 가족의 타임라인' : '사진과 동영상'}</h2>
+            <span className="section-count">
+              {viewMode === 'timeline' ? `${timeline.moments.length}개의 기록` : `${galleryItems.length}개의 미디어`}
+            </span>
+          </div>
+          <div className="view-switch" role="group" aria-label="앨범 보기 방식">
+            <button
+              className={viewMode === 'timeline' ? 'active' : ''}
+              type="button"
+              aria-pressed={viewMode === 'timeline'}
+              onClick={() => setViewMode('timeline')}
+            >
+              기록
+            </button>
+            <button
+              className={viewMode === 'gallery' ? 'active' : ''}
+              type="button"
+              aria-pressed={viewMode === 'gallery'}
+              onClick={() => setViewMode('gallery')}
+            >
+              모아보기
+            </button>
+          </div>
         </div>
         {isLoading ? (
           <div className="empty-state skeleton">소중한 순간을 불러오고 있어요…</div>
+        ) : viewMode === 'gallery' ? (
+          galleryItems.length === 0 ? (
+            <div className="empty-state">
+              <div className="icon-box">✳</div>
+              <h2>아직 모아볼 미디어가 없어요</h2>
+              <p>사진이나 동영상을 올리면 이곳에 모여요.</p>
+            </div>
+          ) : (
+            <div className="gallery-grid">
+              {galleryItems.map((media) => {
+                const fileUrl = `/media/${media.id}/file`;
+                const isImage = imageTypes.has(media.contentType ?? '');
+                const isVideo = videoTypes.has(media.contentType ?? '');
+                const previewUrl = isImage ? `/media/${media.id}/thumbnail` : fileUrl;
+
+                return (
+                  <article className="gallery-tile" key={media.id}>
+                    {isImage ? (
+                      <button
+                        className="gallery-image-button"
+                        type="button"
+                        onClick={() => setViewerMedia(media)}
+                        aria-label={`${media.filename} 크게 보기`}
+                      >
+                        <img src={previewUrl} alt={media.filename} loading="lazy" />
+                      </button>
+                    ) : isVideo ? (
+                      <video src={fileUrl} controls preload="metadata" aria-label={media.filename} />
+                    ) : null}
+                    {isVideo && (
+                      <span className="video-badge" aria-hidden="true">
+                        ▶
+                      </span>
+                    )}
+                    <span className="gallery-caption">
+                      <span>{media.momentTitle}</span>
+                      <time dateTime={media.occurredAt}>{formatDate(media.occurredAt)}</time>
+                    </span>
+                  </article>
+                );
+              })}
+            </div>
+          )
         ) : !timeline.moments.length ? (
           <div className="empty-state">
             <div className="icon-box">✳</div>

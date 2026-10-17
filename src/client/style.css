@@ -874,15 +874,30 @@ a:focus-visible {
   background: #eeefe8;
 }
 
-.gallery-tile > img {
+.gallery-image-button,
+.gallery-tile > video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  object-fit: cover;
+  background: #eeefe8;
+  transition: transform 0.25s ease;
+}
+
+.gallery-image-button {
+  cursor: zoom-in;
+}
+
+.gallery-image-button img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.25s ease;
 }
 
-.gallery-tile:hover > img {
+.gallery-tile:hover .gallery-image-button img {
   transform: scale(1.04);
 }
 
