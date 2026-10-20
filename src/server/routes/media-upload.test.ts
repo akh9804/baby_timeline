@@ -71,7 +71,28 @@ test('POST /media/upload streams a file to disk and GET /media/:id/file streams 
   assert.equal(downloadResponse.statusCode, 200);
   assert.equal(downloadResponse.headers['content-type'], contentType);
   assert.equal(downloadResponse.headers['content-length'], String(content.length));
+  assert.equal(downloadResponse.headers['accept-ranges'], 'bytes');
   assert.deepEqual(downloadResponse.rawPayload, content);
+
+  const rangeResponse = await app.inject({
+    method: 'GET',
+    url: `/media/${uploadedMedia.id}/file`,
+    headers: { range: 'bytes=10-19' },
+  });
+
+  assert.equal(rangeResponse.statusCode, 206);
+  assert.equal(rangeResponse.headers['content-length'], '10');
+  assert.equal(rangeResponse.headers['content-range'], `bytes 10-19/${content.length}`);
+  assert.deepEqual(rangeResponse.rawPayload, content.subarray(10, 20));
+
+  const invalidRangeResponse = await app.inject({
+    method: 'GET',
+    url: `/media/${uploadedMedia.id}/file`,
+    headers: { range: `bytes=${content.length}-` },
+  });
+
+  assert.equal(invalidRangeResponse.statusCode, 416);
+  assert.equal(invalidRangeResponse.headers['content-range'], `bytes */${content.length}`);
 
   const listResponse = await app.inject({ method: 'GET', url: '/media' });
   const [listedMedia] = listResponse.json();

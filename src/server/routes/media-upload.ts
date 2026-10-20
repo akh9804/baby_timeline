@@ -2,7 +2,7 @@ import multipart from '@fastify/multipart';
 import type { FastifyPluginAsync } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { access, mkdir, rm } from 'node:fs/promises';
+import { access, mkdir, rm, stat } from 'node:fs/promises';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createImageThumbnail, ImageProcessingError } from '../image-processing.js';
@@ -34,6 +34,32 @@ interface UploadedMedia {
 
 interface UploadQuery {
   momentId?: string;
+}
+
+interface ByteRange {
+  start: number;
+  end: number;
+}
+
+function parseByteRange(value: string | undefined, size: number): ByteRange | null | 'invalid' {
+  if (value === undefined) return null;
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
+  if (!match || size === 0 || (match[1] === '' && match[2] === '')) return 'invalid';
+
+  if (match[1] === '') {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return 'invalid';
+    return { start: Math.max(size - suffixLength, 0), end: size - 1 };
+  }
+
+  const start = Number(match[1]);
+  const requestedEnd = match[2] === '' ? size - 1 : Number(match[2]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) || start >= size || requestedEnd < start) {
+    return 'invalid';
+  }
+
+  return { start, end: Math.min(requestedEnd, size - 1) };
 }
 
 const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
@@ -220,14 +246,46 @@ const mediaUploadRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const filePath = fastify.mediaStorage.resolvePath(mediaItem.storageKey);
+      let fileSize: number;
+      try {
+        fileSize = (await stat(filePath)).size;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return reply.code(404).send({ message: 'Media file not found' });
+        }
+        throw error;
+      }
+
       const safeFilename = encodeURIComponent(mediaItem.filename).replace(/[!'()*]/g, (character) => {
         return `%${character.charCodeAt(0).toString(16).toUpperCase()}`;
       });
       const disposition = previewableMediaTypes.has(mediaItem.contentType) ? 'inline' : 'attachment';
+      const range = parseByteRange(request.headers.range, fileSize);
+
+      if (range === 'invalid') {
+        return reply
+          .code(416)
+          .header('content-range', `bytes */${fileSize}`)
+          .send({ message: 'Requested range is not satisfiable' });
+      }
+
+      if (range) {
+        const contentLength = range.end - range.start + 1;
+        return reply
+          .code(206)
+          .header('accept-ranges', 'bytes')
+          .header('content-type', mediaItem.contentType)
+          .header('content-length', contentLength)
+          .header('content-range', `bytes ${range.start}-${range.end}/${fileSize}`)
+          .header('content-disposition', `${disposition}; filename*=UTF-8''${safeFilename}`)
+          .header('x-content-type-options', 'nosniff')
+          .send(createReadStream(filePath, { start: range.start, end: range.end }));
+      }
 
       return reply
+        .header('accept-ranges', 'bytes')
         .header('content-type', mediaItem.contentType)
-        .header('content-length', mediaItem.sizeBytes)
+        .header('content-length', fileSize)
         .header('content-disposition', `${disposition}; filename*=UTF-8''${safeFilename}`)
         .header('x-content-type-options', 'nosniff')
         .send(createReadStream(filePath));
