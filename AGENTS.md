@@ -140,6 +140,8 @@ Prefer small, focused changes.
 
 After completing each requested code or project change and its relevant checks, commit the task's changes and push them to GitHub. This is a standing user preference; no additional confirmation is needed for routine commits and pushes. Exclude unrelated changes, never force-push without explicit authorization, and report any blocked or failed push.
 
+When the local production server is running, deployment is part of completing a code change: build both the server and client production artifacts, restart the `com.baby-timeline.server` launchd service, and verify `http://127.0.0.1:3000/ping`. Do this without waiting for the user to ask separately. Follow the detailed procedure in `docs/development-and-deployment.md`. Do not deploy for explanation, review, or diagnosis-only requests that do not change code.
+
 Avoid implementing several major architectural layers in one step unless explicitly requested.
 
 For larger tasks:
