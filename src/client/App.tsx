@@ -138,6 +138,50 @@ function uploadFile(file: File, momentId: number, onProgress: (progress: number)
   });
 }
 
+type AdminPage = 'timeline' | 'loan';
+
+function AdminNavigation({
+  activePage,
+  onNavigate,
+  onLogout,
+}: {
+  activePage: AdminPage;
+  onNavigate: (page: AdminPage) => void;
+  onLogout: () => void;
+}) {
+  return (
+    <header className="site-header admin-site-header">
+      <a className="brand" href="/" onClick={() => onNavigate('timeline')} aria-label="작은 날들 홈">
+        ✳ 작은 날들<span>BABY TIMELINE</span>
+      </a>
+      <div className="admin-header-tools">
+        <span className="admin-label">관리자 메뉴</span>
+        <nav className="admin-nav" aria-label="관리자 페이지 메뉴">
+          <button
+            className={`admin-nav-link${activePage === 'timeline' ? ' active' : ''}`}
+            type="button"
+            aria-current={activePage === 'timeline' ? 'page' : undefined}
+            onClick={() => onNavigate('timeline')}
+          >
+            앨범
+          </button>
+          <button
+            className={`admin-nav-link${activePage === 'loan' ? ' active' : ''}`}
+            type="button"
+            aria-current={activePage === 'loan' ? 'page' : undefined}
+            onClick={() => onNavigate('loan')}
+          >
+            대출 관리
+          </button>
+        </nav>
+        <button className="button small logout-button" type="button" onClick={onLogout}>
+          로그아웃
+        </button>
+      </div>
+    </header>
+  );
+}
+
 function App() {
   const [timeline, setTimeline] = useState<TimelineResponse>({ child: null, moments: [], nextCursor: null });
   const [viewMode, setViewMode] = useState<ViewMode>('timeline');
@@ -685,16 +729,13 @@ function App() {
   if (isLoanPage && userRole === 'admin') {
     return (
       <>
-        <header className="site-header">
-          <a className="brand" href="/" onClick={() => setIsLoanPage(false)} aria-label="작은 날들 홈">
-            ✳ 작은 날들<span>BABY TIMELINE</span>
-          </a>
-          <nav aria-label="주요 메뉴">
-            <button className="button small logout-button" type="button" onClick={() => void handleLogout()}>
-              로그아웃
-            </button>
-          </nav>
-        </header>
+        <AdminNavigation
+          activePage="loan"
+          onNavigate={(page) => {
+            if (page === 'timeline') setIsLoanPage(false);
+          }}
+          onLogout={() => void handleLogout()}
+        />
         <div className="privacy-line">▣ 관리자만 볼 수 있는 대출 정보</div>
         <main className="page-width">
           <section className="timeline-intro">
@@ -789,26 +830,26 @@ function App() {
 
   return (
     <>
-      <header className="site-header">
-        <a className="brand" href="/" aria-label="작은 날들 홈">
-          ✳ 작은 날들<span>BABY TIMELINE</span>
-        </a>
-        <nav aria-label="주요 메뉴">
-          {userRole === 'admin' && (
-            <button className="button secondary small" type="button" onClick={() => void openLoanPage()}>
-              대출 관리
+      {userRole === 'admin' ? (
+        <AdminNavigation
+          activePage="timeline"
+          onNavigate={(page) => {
+            if (page === 'loan') void openLoanPage();
+          }}
+          onLogout={() => void handleLogout()}
+        />
+      ) : (
+        <header className="site-header">
+          <a className="brand" href="/" aria-label="작은 날들 홈">
+            ✳ 작은 날들<span>BABY TIMELINE</span>
+          </a>
+          <nav aria-label="주요 메뉴">
+            <button className="button small logout-button" type="button" onClick={() => void handleLogout()}>
+              로그아웃
             </button>
-          )}
-          {userRole === 'admin' && (
-            <button className="button primary small" type="button" onClick={scrollToRecord}>
-              ＋ 기록 남기기
-            </button>
-          )}
-          <button className="button small logout-button" type="button" onClick={() => void handleLogout()}>
-            로그아웃
-          </button>
-        </nav>
-      </header>
+          </nav>
+        </header>
+      )}
       <div className="privacy-line">▣ 우리 가족만 함께 보는 비공개 앨범</div>
       <main className="page-width">
         <section className="timeline-intro">
