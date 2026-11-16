@@ -151,10 +151,6 @@ a:focus-visible {
   gap: 20px;
 }
 
-.admin-site-header {
-  gap: 24px;
-}
-
 .admin-header-tools {
   display: flex;
   align-items: center;
@@ -162,22 +158,30 @@ a:focus-visible {
   min-width: 0;
 }
 
-.admin-nav {
+.admin-tab-bar {
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background: #fffdf9;
+}
+
+.admin-tab-inner {
   display: flex;
-  align-items: stretch;
-  align-self: stretch;
-  gap: 2px;
-  min-width: 0;
+  max-width: 1050px;
+  margin: 0 auto;
+  padding: 0 28px;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
-.admin-site-header .admin-nav {
-  gap: 2px;
+.admin-tab-inner::-webkit-scrollbar {
+  display: none;
 }
 
-.admin-nav::-webkit-scrollbar {
-  display: none;
+.admin-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
 }
 
 .admin-nav-link {
@@ -1361,21 +1365,11 @@ a:focus-visible {
   }
 
   .admin-header-tools {
-    flex: 1 1 100%;
-    flex-wrap: wrap;
-    gap: 7px;
-    justify-content: flex-end;
+    gap: 4px;
   }
 
-  .admin-header-tools {
-    align-items: center;
-    justify-content: flex-start;
-  }
-
-  .admin-nav {
-    flex: 1 1 auto;
-    align-self: center;
-    min-width: 0;
+  .admin-tab-inner {
+    padding: 0 16px;
   }
 
   .admin-nav-link {

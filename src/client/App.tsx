@@ -157,12 +157,24 @@ function AdminNavigation({
   onCreateRecord?: () => void;
 }) {
   return (
-    <header className="site-header admin-site-header">
-      <a className="brand" href="/" onClick={() => onNavigate('timeline')} aria-label="작은 날들 홈">
-        ✳ 작은 날들<span>BABY TIMELINE</span>
-      </a>
-      <div className="admin-header-tools">
-        <nav className="admin-nav" aria-label="관리자 페이지 메뉴">
+    <>
+      <header className="site-header admin-site-header">
+        <a className="brand" href="/" onClick={() => onNavigate('timeline')} aria-label="작은 날들 홈">
+          ✳ 작은 날들<span>BABY TIMELINE</span>
+        </a>
+        <div className="admin-header-tools">
+          {onCreateRecord && (
+            <button className="button primary small" type="button" onClick={onCreateRecord}>
+              ＋ 기록 남기기
+            </button>
+          )}
+          <button className="button small logout-button" type="button" onClick={onLogout}>
+            로그아웃
+          </button>
+        </div>
+      </header>
+      <nav className="admin-tab-bar" aria-label="관리자 페이지 메뉴">
+        <div className="admin-tab-inner">
           {adminPages.map((page) => (
             <button
               className={`admin-nav-link${activePage === page.id ? ' active' : ''}`}
@@ -174,17 +186,9 @@ function AdminNavigation({
               {page.label}
             </button>
           ))}
-        </nav>
-        {onCreateRecord && (
-          <button className="button primary small" type="button" onClick={onCreateRecord}>
-            ＋ 기록 남기기
-          </button>
-        )}
-        <button className="button small logout-button" type="button" onClick={onLogout}>
-          로그아웃
-        </button>
-      </div>
-    </header>
+        </div>
+      </nav>
+    </>
   );
 }
 
