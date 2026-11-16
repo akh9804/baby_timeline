@@ -208,6 +208,9 @@ function App() {
   const [loan, setLoan] = useState<LoanResponse | null>(null);
   const [repaymentAmount, setRepaymentAmount] = useState('');
   const [repaymentDate, setRepaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [editingRepaymentId, setEditingRepaymentId] = useState<number | null>(null);
+  const [editingRepaymentAmount, setEditingRepaymentAmount] = useState('');
+  const [editingRepaymentDate, setEditingRepaymentDate] = useState('');
   const [isLoadingLoan, setIsLoadingLoan] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -394,6 +397,63 @@ function App() {
       await openLoanPage();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '상환 내역을 저장하지 못했어요.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function beginRepaymentEdit(repayment: LoanRepayment) {
+    setEditingRepaymentId(repayment.id);
+    setEditingRepaymentAmount(String(repayment.amount));
+    setEditingRepaymentDate(repayment.repaidAt);
+    setErrorMessage('');
+  }
+
+  function cancelRepaymentEdit() {
+    setEditingRepaymentId(null);
+    setEditingRepaymentAmount('');
+    setEditingRepaymentDate('');
+  }
+
+  async function saveRepaymentEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (editingRepaymentId === null) return;
+    const amount = Number(editingRepaymentAmount);
+    if (!Number.isInteger(amount) || amount < 1) return;
+
+    setIsSaving(true);
+    setErrorMessage('');
+    try {
+      const response = await fetch(`/admin/loan/repayments/${editingRepaymentId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ amount, repaidAt: editingRepaymentDate }),
+      });
+      if (!response.ok) {
+        const result = (await response.json()) as { message?: string };
+        throw new Error(result.message ?? '상환 내역을 수정하지 못했어요.');
+      }
+      cancelRepaymentEdit();
+      await openLoanPage();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '상환 내역을 수정하지 못했어요.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function deleteRepayment(id: number) {
+    if (!window.confirm('이 상환 내역을 삭제할까요?')) return;
+
+    setIsSaving(true);
+    setErrorMessage('');
+    try {
+      const response = await fetch(`/admin/loan/repayments/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('상환 내역을 삭제하지 못했어요.');
+      if (editingRepaymentId === id) cancelRepaymentEdit();
+      await openLoanPage();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '상환 내역을 삭제하지 못했어요.');
     } finally {
       setIsSaving(false);
     }
@@ -804,12 +864,57 @@ function App() {
                   <p className="empty-state">아직 기록된 상환 내역이 없어요.</p>
                 ) : (
                   <div className="loan-history-list">
-                    {loan.repayments.map((repayment) => (
-                      <div className="loan-history-item" key={repayment.id}>
-                        <span>{repayment.repaidAt.replaceAll('-', '.')}</span>
-                        <strong>- {formatWon(repayment.amount)}</strong>
-                      </div>
-                    ))}
+                    {loan.repayments.map((repayment) =>
+                      editingRepaymentId === repayment.id ? (
+                        <form className="loan-history-edit" key={repayment.id} onSubmit={saveRepaymentEdit}>
+                          <input
+                            aria-label="수정할 상환 금액"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={editingRepaymentAmount}
+                            onChange={(event) => setEditingRepaymentAmount(event.currentTarget.value)}
+                            required
+                          />
+                          <input
+                            aria-label="수정할 상환 날짜"
+                            type="date"
+                            value={editingRepaymentDate}
+                            onChange={(event) => setEditingRepaymentDate(event.currentTarget.value)}
+                            required
+                          />
+                          <button className="text-button" type="submit" disabled={isSaving}>
+                            저장
+                          </button>
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={cancelRepaymentEdit}
+                            disabled={isSaving}
+                          >
+                            취소
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="loan-history-item" key={repayment.id}>
+                          <span>{repayment.repaidAt.replaceAll('-', '.')}</span>
+                          <strong>- {formatWon(repayment.amount)}</strong>
+                          <span className="loan-history-actions">
+                            <button className="text-button" type="button" onClick={() => beginRepaymentEdit(repayment)}>
+                              수정
+                            </button>
+                            <button
+                              className="text-button danger"
+                              type="button"
+                              onClick={() => void deleteRepayment(repayment.id)}
+                              disabled={isSaving}
+                            >
+                              삭제
+                            </button>
+                          </span>
+                        </div>
+                      ),
+                    )}
                   </div>
                 )}
               </section>

@@ -58,6 +58,25 @@ test('loan balance is available only to administrators and tracks repayments', a
     currentBalance: 9360000,
     repayments: [{ id: 1, amount: 500000, repaidAt: '2026-11-16' }],
   });
+
+  const edited = await app.inject({
+    method: 'PATCH',
+    url: '/admin/loan/repayments/1',
+    headers: { cookie: adminCookie },
+    payload: { amount: 600000, repaidAt: '2026-11-17' },
+  });
+  assert.equal(edited.statusCode, 200);
+  assert.deepEqual(edited.json(), { id: 1, amount: 600000, repaidAt: '2026-11-17' });
+
+  const deleted = await app.inject({
+    method: 'DELETE',
+    url: '/admin/loan/repayments/1',
+    headers: { cookie: adminCookie },
+  });
+  assert.equal(deleted.statusCode, 204);
+
+  const restored = await app.inject({ method: 'GET', url: '/admin/loan', headers: { cookie: adminCookie } });
+  assert.deepEqual(restored.json(), { initialBalance: 9860000, currentBalance: 9860000, repayments: [] });
 });
 
 test('loan repayment cannot exceed the current balance', async (t) => {
