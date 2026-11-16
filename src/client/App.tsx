@@ -140,6 +140,11 @@ function uploadFile(file: File, momentId: number, onProgress: (progress: number)
 
 type AdminPage = 'timeline' | 'loan';
 
+const adminPages: Array<{ id: AdminPage; label: string }> = [
+  { id: 'timeline', label: '앨범' },
+  { id: 'loan', label: '대출 관리' },
+];
+
 function AdminNavigation({
   activePage,
   onNavigate,
@@ -151,31 +156,46 @@ function AdminNavigation({
   onLogout: () => void;
   onCreateRecord?: () => void;
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  function navigate(page: AdminPage) {
+    setIsMenuOpen(false);
+    onNavigate(page);
+  }
+
   return (
     <header className="site-header admin-site-header">
-      <a className="brand" href="/" onClick={() => onNavigate('timeline')} aria-label="작은 날들 홈">
+      <a className="brand" href="/" onClick={() => navigate('timeline')} aria-label="작은 날들 홈">
         ✳ 작은 날들<span>BABY TIMELINE</span>
       </a>
       <div className="admin-header-tools">
-        <span className="admin-label">관리자 메뉴</span>
-        <nav className="admin-nav" aria-label="관리자 페이지 메뉴">
+        <div className="admin-menu">
           <button
-            className={`admin-nav-link${activePage === 'timeline' ? ' active' : ''}`}
+            className="admin-menu-trigger"
             type="button"
-            aria-current={activePage === 'timeline' ? 'page' : undefined}
-            onClick={() => onNavigate('timeline')}
+            aria-expanded={isMenuOpen}
+            aria-controls="admin-page-menu"
+            onClick={() => setIsMenuOpen((open) => !open)}
           >
-            앨범
+            <span className="admin-label">관리자 메뉴</span>
+            <span aria-hidden="true">⌄</span>
           </button>
-          <button
-            className={`admin-nav-link${activePage === 'loan' ? ' active' : ''}`}
-            type="button"
-            aria-current={activePage === 'loan' ? 'page' : undefined}
-            onClick={() => onNavigate('loan')}
-          >
-            대출 관리
-          </button>
-        </nav>
+          {isMenuOpen && (
+            <nav id="admin-page-menu" className="admin-menu-panel" aria-label="관리자 페이지 메뉴">
+              {adminPages.map((page) => (
+                <button
+                  className={`admin-menu-link${activePage === page.id ? ' active' : ''}`}
+                  type="button"
+                  aria-current={activePage === page.id ? 'page' : undefined}
+                  key={page.id}
+                  onClick={() => navigate(page.id)}
+                >
+                  {page.label}
+                </button>
+              ))}
+            </nav>
+          )}
+        </div>
         {onCreateRecord && (
           <button className="button primary small" type="button" onClick={onCreateRecord}>
             ＋ 기록 남기기

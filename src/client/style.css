@@ -161,44 +161,64 @@ a:focus-visible {
   gap: 14px;
 }
 
+.admin-menu {
+  position: relative;
+}
+
+.admin-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 8px 13px;
+  border: 1px solid #cbd6c2;
+  border-radius: 8px;
+  background: #eef2e9;
+  color: var(--green);
+}
+
+.admin-menu-trigger:hover {
+  border-color: #aebea2;
+  background: #e7ede0;
+}
+
 .admin-label {
-  color: #9aa58f;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 0.4px;
   white-space: nowrap;
 }
 
-.admin-nav {
-  display: flex;
-  align-items: center;
+.admin-menu-panel {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 180px;
   gap: 3px;
-  padding: 4px;
-  border: 1px solid #d8dfd0;
+  padding: 6px;
+  border: 1px solid var(--line);
   border-radius: 9px;
-  background: #eef2e9;
+  background: white;
+  box-shadow: 0 12px 28px rgb(53 72 63 / 16%);
 }
 
-.admin-nav-link {
-  min-height: 34px;
-  padding: 5px 14px;
+.admin-menu-link {
+  padding: 11px 12px;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #71806c;
-  font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.admin-nav-link:hover {
   color: var(--ink);
+  font-size: 13px;
+  text-align: left;
 }
 
-.admin-nav-link.active {
-  background: white;
-  box-shadow: 0 1px 3px rgb(53 72 63 / 12%);
+.admin-menu-link:hover,
+.admin-menu-link.active {
+  background: #eef2e9;
   color: var(--green);
+  font-weight: 650;
 }
 
 .privacy-line {
@@ -1355,14 +1375,18 @@ a:focus-visible {
     justify-content: flex-end;
   }
 
-  .admin-label {
+  .admin-menu {
     margin-right: auto;
   }
 
-  .admin-nav-link {
-    min-height: 40px;
-    padding: 7px 15px;
+  .admin-menu-trigger {
+    min-height: 44px;
     font-size: 14px;
+  }
+
+  .admin-menu-panel {
+    left: 0;
+    right: auto;
   }
 
   .site-header nav {
