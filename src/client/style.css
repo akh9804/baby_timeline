@@ -159,66 +159,58 @@ a:focus-visible {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
 
-.admin-menu {
+.admin-nav {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.admin-site-header .admin-nav {
+  gap: 2px;
+}
+
+.admin-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-nav-link {
   position: relative;
-}
-
-.admin-menu-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  flex: 0 0 auto;
   min-height: 42px;
-  padding: 8px 13px;
-  border: 1px solid #cbd6c2;
-  border-radius: 8px;
-  background: #eef2e9;
-  color: var(--green);
-}
-
-.admin-menu-trigger:hover {
-  border-color: #aebea2;
-  background: #e7ede0;
-}
-
-.admin-label {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
+  padding: 6px 15px;
+  border: 0;
+  background: transparent;
+  color: #7b8875;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.admin-menu-panel {
+.admin-nav-link::after {
   position: absolute;
-  z-index: 3;
-  top: calc(100% + 8px);
-  right: 0;
-  display: grid;
-  min-width: 180px;
-  gap: 3px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: white;
-  box-shadow: 0 12px 28px rgb(53 72 63 / 16%);
-}
-
-.admin-menu-link {
-  padding: 11px 12px;
-  border: 0;
-  border-radius: 6px;
+  right: 12px;
+  bottom: 0;
+  left: 12px;
+  height: 2px;
+  border-radius: 2px;
   background: transparent;
-  color: var(--ink);
-  font-size: 13px;
-  text-align: left;
+  content: '';
 }
 
-.admin-menu-link:hover,
-.admin-menu-link.active {
-  background: #eef2e9;
+.admin-nav-link:hover,
+.admin-nav-link.active {
   color: var(--green);
-  font-weight: 650;
+}
+
+.admin-nav-link.active::after {
+  background: var(--green);
 }
 
 .privacy-line {
@@ -1375,18 +1367,20 @@ a:focus-visible {
     justify-content: flex-end;
   }
 
-  .admin-menu {
-    margin-right: auto;
+  .admin-header-tools {
+    align-items: center;
+    justify-content: flex-start;
   }
 
-  .admin-menu-trigger {
+  .admin-nav {
+    flex: 1 1 auto;
+    align-self: center;
+    min-width: 0;
+  }
+
+  .admin-nav-link {
     min-height: 44px;
     font-size: 14px;
-  }
-
-  .admin-menu-panel {
-    left: 0;
-    right: auto;
   }
 
   .site-header nav {

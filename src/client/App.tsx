@@ -156,46 +156,25 @@ function AdminNavigation({
   onLogout: () => void;
   onCreateRecord?: () => void;
 }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  function navigate(page: AdminPage) {
-    setIsMenuOpen(false);
-    onNavigate(page);
-  }
-
   return (
     <header className="site-header admin-site-header">
-      <a className="brand" href="/" onClick={() => navigate('timeline')} aria-label="작은 날들 홈">
+      <a className="brand" href="/" onClick={() => onNavigate('timeline')} aria-label="작은 날들 홈">
         ✳ 작은 날들<span>BABY TIMELINE</span>
       </a>
       <div className="admin-header-tools">
-        <div className="admin-menu">
-          <button
-            className="admin-menu-trigger"
-            type="button"
-            aria-expanded={isMenuOpen}
-            aria-controls="admin-page-menu"
-            onClick={() => setIsMenuOpen((open) => !open)}
-          >
-            <span className="admin-label">관리자 메뉴</span>
-            <span aria-hidden="true">⌄</span>
-          </button>
-          {isMenuOpen && (
-            <nav id="admin-page-menu" className="admin-menu-panel" aria-label="관리자 페이지 메뉴">
-              {adminPages.map((page) => (
-                <button
-                  className={`admin-menu-link${activePage === page.id ? ' active' : ''}`}
-                  type="button"
-                  aria-current={activePage === page.id ? 'page' : undefined}
-                  key={page.id}
-                  onClick={() => navigate(page.id)}
-                >
-                  {page.label}
-                </button>
-              ))}
-            </nav>
-          )}
-        </div>
+        <nav className="admin-nav" aria-label="관리자 페이지 메뉴">
+          {adminPages.map((page) => (
+            <button
+              className={`admin-nav-link${activePage === page.id ? ' active' : ''}`}
+              type="button"
+              aria-current={activePage === page.id ? 'page' : undefined}
+              key={page.id}
+              onClick={() => onNavigate(page.id)}
+            >
+              {page.label}
+            </button>
+          ))}
+        </nav>
         {onCreateRecord && (
           <button className="button primary small" type="button" onClick={onCreateRecord}>
             ＋ 기록 남기기
