@@ -144,10 +144,12 @@ function AdminNavigation({
   activePage,
   onNavigate,
   onLogout,
+  onCreateRecord,
 }: {
   activePage: AdminPage;
   onNavigate: (page: AdminPage) => void;
   onLogout: () => void;
+  onCreateRecord?: () => void;
 }) {
   return (
     <header className="site-header admin-site-header">
@@ -174,6 +176,11 @@ function AdminNavigation({
             대출 관리
           </button>
         </nav>
+        {onCreateRecord && (
+          <button className="button primary small" type="button" onClick={onCreateRecord}>
+            ＋ 기록 남기기
+          </button>
+        )}
         <button className="button small logout-button" type="button" onClick={onLogout}>
           로그아웃
         </button>
@@ -837,6 +844,7 @@ function App() {
             if (page === 'loan') void openLoanPage();
           }}
           onLogout={() => void handleLogout()}
+          onCreateRecord={scrollToRecord}
         />
       ) : (
         <header className="site-header">
