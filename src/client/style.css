@@ -593,6 +593,67 @@ a:focus-visible {
   color: var(--ink);
 }
 
+.loan-balance-card {
+  display: grid;
+  gap: 6px;
+  margin-top: 23px;
+  padding: 30px 28px;
+  border-radius: 12px;
+  background: var(--green);
+  color: white;
+}
+
+.loan-balance-card .eyebrow {
+  color: #c8d6be;
+}
+
+.loan-balance-card strong {
+  font-size: clamp(32px, 7vw, 52px);
+  font-weight: 650;
+  letter-spacing: -2px;
+  line-height: 1.2;
+}
+
+.loan-balance-card > span:last-child {
+  color: #d5e0cf;
+  font-size: 12px;
+}
+
+.loan-history {
+  margin-top: 42px;
+  padding-bottom: 50px;
+}
+
+.loan-history-list {
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: white;
+}
+
+.loan-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.loan-history-item:first-child {
+  border-top: 0;
+}
+
+.loan-history-item > span {
+  color: var(--muted);
+}
+
+.loan-history-item strong {
+  color: var(--green);
+  font-weight: 650;
+}
+
 .muted {
   color: var(--muted);
   font-size: 14px;

@@ -55,11 +55,21 @@ export function createDatabase(databasePath: string): DatabaseSync {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) STRICT;
 
+    CREATE TABLE IF NOT EXISTS loan_repayments (
+      id INTEGER PRIMARY KEY,
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      repaid_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) STRICT;
+
     CREATE INDEX IF NOT EXISTS moments_occurred_at_index
       ON moments (occurred_at DESC, id DESC);
 
     CREATE INDEX IF NOT EXISTS comments_moment_id_index
       ON comments (moment_id, created_at, id);
+
+    CREATE INDEX IF NOT EXISTS loan_repayments_repaid_at_index
+      ON loan_repayments (repaid_at DESC, id DESC);
 
   `);
 

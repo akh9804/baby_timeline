@@ -50,6 +50,18 @@ interface LegacyMedia {
   sizeBytes: number | null;
 }
 
+interface LoanRepayment {
+  id: number;
+  amount: number;
+  repaidAt: string;
+}
+
+interface LoanResponse {
+  initialBalance: number;
+  currentBalance: number;
+  repayments: LoanRepayment[];
+}
+
 type UploadStatus = 'pending' | 'uploading' | 'done' | 'error';
 type ViewMode = 'timeline' | 'gallery';
 
@@ -104,6 +116,10 @@ function formatFileSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function formatWon(amount: number) {
+  return `${new Intl.NumberFormat('ko-KR').format(amount)}원`;
+}
+
 function uploadFile(file: File, momentId: number, onProgress: (progress: number) => void) {
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
@@ -134,6 +150,11 @@ function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<'admin' | 'viewer' | null>(null);
+  const [isLoanPage, setIsLoanPage] = useState(false);
+  const [loan, setLoan] = useState<LoanResponse | null>(null);
+  const [repaymentAmount, setRepaymentAmount] = useState('');
+  const [repaymentDate, setRepaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [isLoadingLoan, setIsLoadingLoan] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -278,7 +299,50 @@ function App() {
     setChildren([]);
     setSelectedChildId(null);
     setLegacyMedia([]);
+    setIsLoanPage(false);
+    setLoan(null);
     setErrorMessage('');
+  }
+
+  async function openLoanPage() {
+    setIsLoanPage(true);
+    setIsLoadingLoan(true);
+    setErrorMessage('');
+    try {
+      const response = await fetch('/admin/loan');
+      if (!response.ok) throw new Error('대출 정보를 불러오지 못했어요.');
+      setLoan((await response.json()) as LoanResponse);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '대출 정보를 불러오지 못했어요.');
+    } finally {
+      setIsLoadingLoan(false);
+    }
+  }
+
+  async function saveRepayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = Number(repaymentAmount);
+    if (!Number.isInteger(amount) || amount < 1) return;
+
+    setIsSaving(true);
+    setErrorMessage('');
+    try {
+      const response = await fetch('/admin/loan/repayments', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ amount, repaidAt: repaymentDate }),
+      });
+      if (!response.ok) {
+        const result = (await response.json()) as { message?: string };
+        throw new Error(result.message ?? '상환 내역을 저장하지 못했어요.');
+      }
+      setRepaymentAmount('');
+      await openLoanPage();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '상환 내역을 저장하지 못했어요.');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function saveChild(event: FormEvent<HTMLFormElement>) {
@@ -618,6 +682,98 @@ function App() {
     );
   }
 
+  if (isLoanPage && userRole === 'admin') {
+    return (
+      <>
+        <header className="site-header">
+          <a className="brand" href="/" onClick={() => setIsLoanPage(false)} aria-label="작은 날들 홈">
+            ✳ 작은 날들<span>BABY TIMELINE</span>
+          </a>
+          <nav aria-label="주요 메뉴">
+            <button className="button small logout-button" type="button" onClick={() => void handleLogout()}>
+              로그아웃
+            </button>
+          </nav>
+        </header>
+        <div className="privacy-line">▣ 관리자만 볼 수 있는 대출 정보</div>
+        <main className="page-width">
+          <section className="timeline-intro">
+            <span className="eyebrow">ADMIN · LOAN TRACKER</span>
+            <h1>대출 잔액</h1>
+            <p>상환 내역을 기록하면 현재 남은 잔액을 자동으로 계산해요.</p>
+          </section>
+          {isLoadingLoan && <div className="empty-state">대출 정보를 불러오고 있어요…</div>}
+          {!isLoadingLoan && loan && (
+            <>
+              <section className="loan-balance-card" aria-label="현재 대출 잔액">
+                <span className="eyebrow">CURRENT BALANCE</span>
+                <strong>{formatWon(loan.currentBalance)}</strong>
+                <span>초기 잔액 {formatWon(loan.initialBalance)}</span>
+              </section>
+              <section className="form-section" aria-labelledby="repayment-title">
+                <h2 id="repayment-title">상환 내역 추가</h2>
+                <form onSubmit={saveRepayment}>
+                  <div className="form-row">
+                    <label className="login-field">
+                      <span>상환 금액 (원)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        inputMode="numeric"
+                        value={repaymentAmount}
+                        onChange={(event) => setRepaymentAmount(event.currentTarget.value)}
+                        placeholder="500000"
+                        required
+                      />
+                    </label>
+                    <label className="login-field">
+                      <span>상환 날짜</span>
+                      <input
+                        type="date"
+                        value={repaymentDate}
+                        onChange={(event) => setRepaymentDate(event.currentTarget.value)}
+                        required
+                      />
+                    </label>
+                  </div>
+                  <button className="button primary full" type="submit" disabled={isSaving || !repaymentAmount}>
+                    {isSaving ? '저장하는 중…' : '상환 내역 저장'}
+                  </button>
+                </form>
+              </section>
+              <section className="loan-history" aria-labelledby="history-title">
+                <div className="section-heading">
+                  <div>
+                    <h2 id="history-title">상환 내역</h2>
+                    <span className="section-count">{loan.repayments.length}건</span>
+                  </div>
+                </div>
+                {loan.repayments.length === 0 ? (
+                  <p className="empty-state">아직 기록된 상환 내역이 없어요.</p>
+                ) : (
+                  <div className="loan-history-list">
+                    {loan.repayments.map((repayment) => (
+                      <div className="loan-history-item" key={repayment.id}>
+                        <span>{repayment.repaidAt.replaceAll('-', '.')}</span>
+                        <strong>- {formatWon(repayment.amount)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+          {errorMessage && (
+            <div className="error" role="alert">
+              {errorMessage}
+            </div>
+          )}
+        </main>
+      </>
+    );
+  }
+
   const momentsByYear = new Map<string, Moment[]>();
   for (const moment of timeline.moments) {
     const year = moment.occurredAt.slice(0, 4);
@@ -638,6 +794,11 @@ function App() {
           ✳ 작은 날들<span>BABY TIMELINE</span>
         </a>
         <nav aria-label="주요 메뉴">
+          {userRole === 'admin' && (
+            <button className="button secondary small" type="button" onClick={() => void openLoanPage()}>
+              대출 관리
+            </button>
+          )}
           {userRole === 'admin' && (
             <button className="button primary small" type="button" onClick={scrollToRecord}>
               ＋ 기록 남기기
